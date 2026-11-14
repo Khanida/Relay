@@ -25,9 +25,14 @@ import {
   CAMPAIGN_MISSIONS,
   MERIDIAN_REGIONS,
   ROBOT_CATALOG,
+  STORE_CATALOG,
   computeEffectiveRobotStats,
   computeRobotChargeStatus,
 } from '../src/shared/gameCatalog';
+import {
+  createGooglePayPaymentRequest,
+  getGooglePayConfig,
+} from '../src/services/googlePayService';
 import { createRegionWorldMap } from '../src/shared/meridianWorldMaps';
 import type { RegionId } from '../src/shared/types';
 import { MissionSimulationEngine } from '../src/simulation/missionEngine';
@@ -360,3 +365,36 @@ test('Zero-quota Commander executes locally without Cloud AI warnings, and 24h r
   assert.equal(batBuy.robots.find((r) => r.robot_id === 'relay_01')?.battery_pct, 100);
   resetNewGame();
 });
+
+test('Google Pay service initializes payment requests from VITE_GOOGLE_PAY_* env vars for currency and battery purchases', () => {
+  const defaultCfg = getGooglePayConfig({});
+  assert.equal(defaultCfg.environment, 'TEST');
+  assert.equal(defaultCfg.isLiveConfigured, false);
+  assert.equal(defaultCfg.gateway, 'example');
+
+  const liveCfg = getGooglePayConfig({
+    VITE_GOOGLE_PAY_MERCHANT_ID: 'BCR2DN4T12345678',
+    VITE_GOOGLE_PAY_GATEWAY: 'stripe',
+    VITE_GOOGLE_PAY_GATEWAY_MERCHANT_ID: 'acct_live_relay',
+    VITE_GOOGLE_PAY_ENV: 'PRODUCTION',
+  });
+  assert.equal(liveCfg.environment, 'PRODUCTION');
+  assert.equal(liveCfg.isLiveConfigured, true);
+  assert.equal(liveCfg.merchantId, 'BCR2DN4T12345678');
+  assert.equal(liveCfg.gateway, 'stripe');
+
+  const currencyItem = STORE_CATALOG.find((s) => s.kind === 'currency')!;
+  const currencyReq = createGooglePayPaymentRequest(currencyItem, liveCfg);
+  assert.equal(currencyReq.apiVersion, 2);
+  assert.equal(currencyReq.merchantInfo.merchantId, 'BCR2DN4T12345678');
+  assert.equal(currencyReq.allowedPaymentMethods[0].tokenizationSpecification.parameters.gateway, 'stripe');
+  assert.equal(currencyReq.transactionInfo.totalPrice, currencyItem.priceUsd);
+  assert.ok(currencyReq.transactionInfo.totalPriceLabel.includes('RELAY Credits Pack'));
+
+  const batteryItem = STORE_CATALOG.find((s) => s.kind === 'battery')!;
+  const batteryReq = createGooglePayPaymentRequest(batteryItem, liveCfg);
+  assert.equal(batteryReq.transactionInfo.totalPrice, batteryItem.priceUsd);
+  assert.equal(batteryReq.transactionInfo.currencyCode, 'USD');
+  assert.ok(batteryReq.transactionInfo.totalPriceLabel.includes('Instant Battery Overcharge'));
+});
+

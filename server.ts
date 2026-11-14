@@ -199,8 +199,16 @@ async function startServer() {
         typeof req.body?.targetRobotId === 'string'
           ? (req.body.targetRobotId as RobotModelId)
           : undefined;
+      const paymentDesc =
+        typeof req.body?.paymentDescription === 'string' && req.body.paymentDescription.trim()
+          ? req.body.paymentDescription.trim().slice(0, 48)
+          : '';
       const paymentMode =
-        req.body?.paymentMethod === 'google_pay' ? 'Google Pay' : 'Sandbox Demo';
+        req.body?.paymentMethod === 'google_pay'
+          ? paymentDesc
+            ? `Google Pay (${paymentDesc})`
+            : 'Google Pay'
+          : 'Sandbox Demo';
       const result = processStorePurchase(sku, targetRobotId, paymentMode);
       res.json(result);
     } catch (err) {

@@ -8,18 +8,19 @@ import type {
   StoreItemDef,
   StoreSku,
 } from '../shared/types';
-import { getGooglePayConfig, loadGooglePayScript, requestGooglePayCheckout } from '../utils/googlePay';
+import {
+  finalizeStorePurchase,
+  getGooglePayConfig,
+  loadGooglePayScript,
+  requestGooglePayCheckout,
+  type StorePurchaseResponse,
+} from '../services/googlePayService';
 
 interface StoreModalProps {
   profile: PlayerProfile;
   ownedRobots: OwnedRobotState[];
   onClose: () => void;
-  onPurchaseComplete: (data: {
-    profile: PlayerProfile;
-    robots: OwnedRobotState[];
-    transactions: unknown[];
-    grantedItem: StoreItemDef;
-  }) => void;
+  onPurchaseComplete: (data: StorePurchaseResponse) => void;
 }
 
 export function StoreModal({
@@ -47,21 +48,17 @@ export function StoreModal({
 
   const completeServerPurchase = async (
     item: StoreItemDef,
-    paymentMethod: 'google_pay' | 'sandbox'
+    paymentMethod: 'google_pay' | 'sandbox',
+    paymentToken?: string,
+    paymentDescription?: string
   ) => {
-    const res = await fetch('/api/store/purchase', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sku: item.sku,
-        targetRobotId,
-        paymentMethod,
-      }),
+    const data = await finalizeStorePurchase({
+      item,
+      targetRobotId,
+      paymentMethod,
+      paymentToken,
+      paymentDescription,
     });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Purchase could not be finalized.');
-    }
     onPurchaseComplete(data);
     setSuccessMsg(
       item.kind === 'currency'
@@ -80,16 +77,20 @@ export function StoreModal({
 
     try {
       if (useGooglePay) {
-        const gpayRes = await requestGooglePayCheckout(item.priceUsd);
+        const gpayRes = await requestGooglePayCheckout(item);
         if (gpayRes.mode === 'cancelled') {
           setBusySku(null);
           return;
         }
         if (gpayRes.ok) {
-          await completeServerPurchase(item, 'google_pay');
+          await completeServerPurchase(
+            item,
+            'google_pay',
+            gpayRes.paymentToken,
+            gpayRes.paymentDescription
+          );
           return;
         }
-        // If Google Pay popup cannot open inside embedded preview/sandbox, inform clearly
         setErrorMsg(
           gpayRes.error ||
             'Google Pay sheet unavailable in this preview frame. Use Sandbox Test Checkout below to test.'

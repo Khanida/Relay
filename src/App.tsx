@@ -132,7 +132,7 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [apiNotice, setApiNotice] = useState<string | null>(null);
 
-  const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
+  const [cameraMode, setCameraMode] = useState<CameraMode>('third_person');
   const [controlMode, setControlMode] = useState<ControlMode>('auto');
   const [simSpeed, setSimSpeed] = useState<number>(1);
   const [showFpvPip, setShowFpvPip] = useState(true);
@@ -140,7 +140,7 @@ export default function App() {
   const [showTaskSnackbars, setShowTaskSnackbars] = useState(true);
   const [autoOptimize, setAutoOptimize] = useState(true);
   const [dockCollapsed, setDockCollapsed] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<PanelTab>('overview');
   const [showDebriefModal, setShowDebriefModal] = useState(false);
   const [showStore, setShowStore] = useState(false);

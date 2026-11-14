@@ -262,15 +262,31 @@ export function RelayViewport({
 
     const mainCamera = new THREE.PerspectiveCamera(48, width / height, 0.1, 110);
     const baseW = gridToWorld(engine.mapData.baseCoord);
-    mainCamera.position.set(baseW.x - 3.5, 11.5, baseW.z + 11.5);
-
+    const initUnit = engine.units[engine.selectedUnitIndex] ?? engine.units[0];
     const controls = new OrbitControls(mainCamera, renderer.domElement);
     controls.enableDamping = !isSoftwareGl;
     controls.dampingFactor = 0.06;
     controls.minDistance = 2.8;
     controls.maxDistance = 36;
     controls.maxPolarAngle = Math.PI / 2 - 0.08;
-    controls.target.set(0, 0.4, 0);
+
+    if (initUnit && (cameraModeRef.current === 'third_person' || cameraModeRef.current === 'chase')) {
+      const distBack = cameraModeRef.current === 'third_person' ? 2.8 : 4.6;
+      const heightUp = cameraModeRef.current === 'third_person' ? 1.85 : 2.9;
+      mainCamera.position.set(
+        initUnit.pos.x - Math.sin(initUnit.headingRad) * distBack,
+        heightUp,
+        initUnit.pos.z - Math.cos(initUnit.headingRad) * distBack
+      );
+      controls.target.set(
+        initUnit.pos.x + Math.sin(initUnit.headingRad) * 1.4,
+        0.55,
+        initUnit.pos.z + Math.cos(initUnit.headingRad) * 1.4
+      );
+    } else {
+      mainCamera.position.set(baseW.x - 3.5, 11.5, baseW.z + 11.5);
+      controls.target.set(0, 0.4, 0);
+    }
     controls.update();
 
     const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
