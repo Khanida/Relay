@@ -165,6 +165,13 @@ export type LocomotionState =
   | 'swimming'
   | 'working';
 
+export type ActuatorStatus =
+  | 'Standby'
+  | 'Nominal'
+  | 'High Load'
+  | 'Thermal Caution'
+  | 'Fault';
+
 export interface RobotStateSnapshot {
   robot_id: string;
   model_id?: RobotModelId;
@@ -175,6 +182,9 @@ export interface RobotStateSnapshot {
   speedMps: number;
   batteryPct: number;
   integrityPct?: number;
+  motorTempC?: number;
+  actuatorLoadPct?: number;
+  actuatorStatus?: ActuatorStatus;
   locomotionState: LocomotionState;
   currentTaskLabel: string;
   collisionCount: number;

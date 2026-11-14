@@ -4,6 +4,10 @@
 
 RELAY 2.0 is an open-world 3D autonomous rescue robotics adventure and simulation built with **Three.js (WebGL2)**, **React + TypeScript**, **Express + WebSockets**, **SQLite (`node:sqlite`)**, and the **Gemini API (`@google/genai`)**.
 
+## Published Website
+
+- **Live App:** [https://ais-pre-ljwz73q3rpj5y2ophd4rwn-885189251864.europe-west2.run.app](https://ais-pre-ljwz73q3rpj5y2ophd4rwn-885189251864.europe-west2.run.app)
+
 ## Key Features
 
 - **Operation Ashfall Campaign (6 Chapters + Side Contracts)**: Explore 7 interconnected Meridian districts (*Industrial District*, *Meridian City*, *Old Quarter*, *Port Meridian*, *Highland Province*, *Desert Corridor*, *Research Valley*) culminating in a player-driven ethical choice.

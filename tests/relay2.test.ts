@@ -398,3 +398,24 @@ test('Google Pay service initializes payment requests from VITE_GOOGLE_PAY_* env
   assert.ok(batteryReq.transactionInfo.totalPriceLabel.includes('Instant Battery Overcharge'));
 });
 
+test('Active robot diagnostics track mechanical integrity, rising motor temperature, and actuator status during missions', () => {
+  const engine = new MissionSimulationEngine({}, { regionId: 'industrial_district' });
+  const standbySnap = engine.getSnapshot();
+  assert.equal(standbySnap.integrityPct, 100);
+  assert.equal(standbySnap.motorTempC, 34);
+  assert.equal(standbySnap.actuatorStatus, 'Standby');
+  assert.equal(standbySnap.actuatorLoadPct, 0);
+
+  engine.startFromInstruction('Find the survivor and return safely.');
+  for (let i = 0; i < 60; i++) engine.step(0.05);
+
+  const activeSnap = engine.getSnapshot();
+  assert.ok((activeSnap.motorTempC ?? 0) > 34.5, 'Motor temperature should rise under active load');
+  assert.ok((activeSnap.actuatorLoadPct ?? 0) > 25, 'Actuator load should reflect active locomotion');
+  assert.ok(
+    activeSnap.actuatorStatus === 'Nominal' || activeSnap.actuatorStatus === 'High Load',
+    `Expected active actuator status, got ${activeSnap.actuatorStatus}`
+  );
+});
+
+

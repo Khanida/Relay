@@ -14,6 +14,7 @@ import {
 import { ROBOT_CATALOG, computeEffectiveRobotStats } from '../shared/gameCatalog';
 import { createRegionWorldMap, type RegionWorldMap } from '../shared/meridianWorldMaps';
 import type {
+  ActuatorStatus,
   AgentActor,
   AgentEvent,
   AgentEventCategory,
@@ -60,6 +61,9 @@ export interface RobotUnitRuntime {
   turnRateRad: number;
   batteryPct: number;
   integrityPct: number;
+  motorTempC: number;
+  actuatorLoadPct: number;
+  actuatorStatus: ActuatorStatus;
   locomotionState: RobotStateSnapshot['locomotionState'];
   taskQueue: MissionTask[];
   activeTaskIdx: number;
@@ -252,6 +256,9 @@ export class MissionSimulationEngine {
             ? Math.max(0, Math.min(100, spec.battery_pct))
             : 100,
         integrityPct: spec.integrity_pct ?? 100,
+        motorTempC: 34.0,
+        actuatorLoadPct: 0,
+        actuatorStatus: 'Standby',
         locomotionState: 'docked',
         taskQueue: [],
         activeTaskIdx: -1,
@@ -492,12 +499,16 @@ export class MissionSimulationEngine {
       }
       if (activeUnit && this.phase !== 'completed' && this.phase !== 'aborted' && this.phase !== 'failed') {
         this.stepManualExploration(activeUnit, dt);
+        this.updateUnitDiagnostics(activeUnit, dt);
         this.syncPrimaryMirrors();
       }
       return;
     }
 
     if (this.phase !== 'executing' && this.phase !== 'returning') {
+      for (const unit of this.units) {
+        this.updateUnitDiagnostics(unit, dt);
+      }
       return;
     }
 
@@ -505,6 +516,7 @@ export class MissionSimulationEngine {
 
     for (const unit of this.units) {
       this.stepUnitAutonomous(unit, dt);
+      this.updateUnitDiagnostics(unit, dt);
       if ((this.phase as MissionPhase) !== 'executing' && (this.phase as MissionPhase) !== 'returning') {
         break;
       }
@@ -521,6 +533,58 @@ export class MissionSimulationEngine {
     }
 
     this.syncPrimaryMirrors();
+  }
+
+  private updateUnitDiagnostics(unit: RobotUnitRuntime, dt: number) {
+    const isStopped =
+      unit.locomotionState === 'docked' ||
+      unit.locomotionState === 'idle' ||
+      unit.locomotionState === 'stopped' ||
+      unit.locomotionState === 'emergency_stop';
+
+    let loadPct = 0;
+    if (!isStopped) {
+      const speedNorm = Math.min(1.2, unit.speedMps / Math.max(0.4, unit.stats.speedMps));
+      const turnNorm = Math.min(1, Math.abs(unit.turnRateRad) / 3.0);
+      const modeLoad =
+        unit.locomotionState === 'hovering'
+          ? 28
+          : unit.locomotionState === 'swimming'
+            ? 22
+            : unit.locomotionState === 'working'
+              ? 24
+              : unit.locomotionState === 'scanning'
+                ? 14
+                : 8;
+      const vibrationLoad = Math.min(18, (unit.latestSensors?.vibrationHz ?? 0) * 0.45);
+      loadPct = Math.max(0, Math.min(100, speedNorm * 52 + turnNorm * 20 + modeLoad + vibrationLoad));
+    }
+    unit.actuatorLoadPct = Number(loadPct.toFixed(1));
+
+    const sensorTemp = unit.latestSensors?.temperatureC ?? 24;
+    const ambientMotorBase = 33 + Math.max(0, sensorTemp - 28) * 0.35;
+    const damagePenalty = Math.max(0, (100 - unit.integrityPct) * 0.25);
+    const targetTemp = Math.min(105, ambientMotorBase + (loadPct / 100) * 44 + damagePenalty);
+    const rate = targetTemp > unit.motorTempC ? 0.38 : 0.24;
+    unit.motorTempC = Number(
+      Math.max(28, Math.min(110, unit.motorTempC + (targetTemp - unit.motorTempC) * Math.min(1, dt * rate))).toFixed(1)
+    );
+
+    if (
+      unit.integrityPct <= 25 ||
+      unit.batteryPct <= 0 ||
+      unit.locomotionState === 'emergency_stop'
+    ) {
+      unit.actuatorStatus = 'Fault';
+    } else if (unit.motorTempC >= 78) {
+      unit.actuatorStatus = 'Thermal Caution';
+    } else if (unit.actuatorLoadPct >= 75) {
+      unit.actuatorStatus = 'High Load';
+    } else if (isStopped) {
+      unit.actuatorStatus = 'Standby';
+    } else {
+      unit.actuatorStatus = 'Nominal';
+    }
   }
 
   private stepManualExploration(unit: RobotUnitRuntime, dt: number) {
@@ -936,6 +1000,9 @@ export class MissionSimulationEngine {
         speedMps: Number(u.speedMps.toFixed(2)),
         batteryPct: Number(u.batteryPct.toFixed(1)),
         integrityPct: Number(u.integrityPct.toFixed(1)),
+        motorTempC: Number(u.motorTempC.toFixed(1)),
+        actuatorLoadPct: Number(u.actuatorLoadPct.toFixed(1)),
+        actuatorStatus: u.actuatorStatus,
         locomotionState: u.locomotionState,
         currentTaskLabel: t ? t.label : 'Standby at Launch Bay',
         collisionCount: u.collisionCount,
@@ -955,6 +1022,10 @@ export class MissionSimulationEngine {
       headingRad: this.headingRad,
       speedMps: 0,
       batteryPct: 100,
+      integrityPct: 100,
+      motorTempC: 34.0,
+      actuatorLoadPct: 0,
+      actuatorStatus: 'Standby',
       locomotionState: 'docked',
       currentTaskLabel: 'Standby at Launch Bay',
       collisionCount: 0,

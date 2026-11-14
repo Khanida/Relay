@@ -20,6 +20,7 @@ import type { ControlMode, GraphicsQuality, OwnedRobotState } from '../shared/ty
 import { buildMeridianWorld3D } from '../simulation/meridianWorld3D';
 import type { MissionSimulationEngine } from '../simulation/missionEngine';
 import { createRobotModel, type RobotVisualHandle } from '../simulation/robotModels';
+import { RobotDiagnosticsPanel } from './RobotDiagnosticsPanel';
 
 export type CameraMode = 'orbit' | 'chase' | 'third_person' | 'fpv' | 'cinematic';
 
@@ -59,6 +60,7 @@ interface RelayViewportProps {
   graphicsQuality: GraphicsQuality;
   worldVersion: number;
   showPerfOverlay?: boolean;
+  showDiagnosticsHud?: boolean;
   autoOptimize?: boolean;
   onToggleAutoOptimize?: () => void;
   rightOverlay?: ReactNode;
@@ -82,6 +84,7 @@ export function RelayViewport({
   graphicsQuality,
   worldVersion,
   showPerfOverlay = true,
+  showDiagnosticsHud = true,
   autoOptimize = true,
   onToggleAutoOptimize,
   rightOverlay,
@@ -695,22 +698,24 @@ export function RelayViewport({
     <div className="relative w-full h-full bg-[#0B0D10] overflow-hidden">
       <div ref={containerRef} className="w-full h-full" />
 
-      {!swGlDetected && showFpvPip && cameraMode !== 'fpv' ? (
-        <div
-          className="pointer-events-none absolute top-4 left-4 border border-[#94A3B8]/40 rounded-md overflow-hidden"
-          style={{ width: 'min(230px, 24%)', aspectRatio: '16 / 10' }}
-        >
-          <div className="absolute top-1.5 left-1.5 z-10">{BatteryCornerBadge}</div>
-          <div className="absolute inset-x-0 bottom-0 bg-[#0b0d10]/85 px-2 py-1 flex items-center justify-between text-[11px] font-mono-tabular text-[#d1d5db]">
-            <span>{activeUnitSnap.name ?? activeUnitSnap.robot_id} FPV</span>
-            <span>{engine.survivorFound ? 'Target Locked' : 'Scanning'}</span>
+      {/* Top-Left HUD Column: FPV PiP + Battery + Active Robot Diagnostics */}
+      <div className="pointer-events-none absolute top-4 left-4 z-10 flex flex-col items-start gap-2.5 w-[min(230px,24%)]">
+        {!swGlDetected && showFpvPip && cameraMode !== 'fpv' ? (
+          <div className="relative w-full aspect-[16/10] border border-[#94A3B8]/40 rounded-md overflow-hidden">
+            <div className="absolute top-1.5 left-1.5 z-10">{BatteryCornerBadge}</div>
+            <div className="absolute inset-x-0 bottom-0 bg-[#0b0d10]/85 px-2 py-1 flex items-center justify-between text-[11px] font-mono-tabular text-[#d1d5db]">
+              <span>{activeUnitSnap.name ?? activeUnitSnap.robot_id} FPV</span>
+              <span>{engine.survivorFound ? 'Target Locked' : 'Scanning'}</span>
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className="pointer-events-none absolute top-4 left-4 z-10 flex items-center gap-2">
-          {BatteryCornerBadge}
-        </div>
-      )}
+        ) : (
+          <div className="flex items-center gap-2">{BatteryCornerBadge}</div>
+        )}
+
+        {showDiagnosticsHud && (
+          <RobotDiagnosticsPanel robot={activeUnitSnap} phase={engine.phase} />
+        )}
+      </div>
 
       {(showPerfOverlay || rightOverlay) && (
         <div className="pointer-events-none absolute top-16 right-4 z-20 flex flex-col items-end gap-2 max-h-[calc(100%-8.5rem)]">

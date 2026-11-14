@@ -15,7 +15,7 @@ import type {
 } from '../shared/types';
 import { BeliefMapCanvas } from './BeliefMapCanvas';
 
-export type PanelTab = 'overview' | 'sensors' | 'logs' | 'history';
+export type PanelTab = 'overview' | 'diagnostics' | 'sensors' | 'logs' | 'history';
 
 interface MissionControlPanelProps {
   activeTab: PanelTab;
@@ -83,10 +83,11 @@ export function MissionControlPanel({
   return (
     <aside className="w-full lg:w-[396px] shrink-0 h-full bg-[#11151B] border-l border-[#212834] flex flex-col overflow-hidden">
       <div className="px-4 pt-3 pb-2 border-b border-[#212834] space-y-2">
-        <div className="grid grid-cols-4 gap-1 p-1 rounded-md bg-[#0B0D10] border border-[#1E242E]">
+        <div className="grid grid-cols-5 gap-1 p-1 rounded-md bg-[#0B0D10] border border-[#1E242E]">
           {(
             [
               { id: 'overview', label: 'Mission' },
+              { id: 'diagnostics', label: 'Diag' },
               { id: 'sensors', label: 'Sensors' },
               { id: 'logs', label: 'Agents' },
               { id: 'history', label: 'History' },
@@ -99,7 +100,7 @@ export function MissionControlPanel({
                 onTabChange(tab.id);
                 if (tab.id === 'history') onRefreshHistory();
               }}
-              className={`py-1.5 px-2 text-xs font-medium rounded transition-colors whitespace-nowrap ${
+              className={`py-1.5 px-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap ${
                 activeTab === tab.id
                   ? 'bg-[#1D2430] text-white'
                   : 'text-[#9BA3B0] hover:text-white'
@@ -290,6 +291,102 @@ export function MissionControlPanel({
               )}
             </section>
           </>
+        )}
+
+        {activeTab === 'diagnostics' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-sm font-semibold tracking-wide text-[#F2F4F7]">
+                Mechanical &amp; Actuator Diagnostics
+              </h2>
+              <span className="text-[11px] font-mono-tabular text-[#E5C158]">
+                {robot.name ?? robot.robot_id}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5 text-xs">
+              <div className="p-3 rounded bg-[#161B23] border border-[#222A36]">
+                <div className="text-[11px] text-[#9BA3B0]">Mechanical Integrity</div>
+                <div
+                  className={`mt-1 text-lg font-semibold font-mono-tabular ${
+                    (robot.integrityPct ?? 100) >= 75
+                      ? 'text-emerald-400'
+                      : (robot.integrityPct ?? 100) >= 45
+                        ? 'text-[#E5C158]'
+                        : 'text-rose-400'
+                  }`}
+                >
+                  {(robot.integrityPct ?? 100).toFixed(1)}%
+                </div>
+                <div className="mt-2 h-1.5 w-full rounded-full bg-[#0B0D10] overflow-hidden">
+                  <div
+                    className={`h-full transition-all ${
+                      (robot.integrityPct ?? 100) >= 75
+                        ? 'bg-emerald-500'
+                        : (robot.integrityPct ?? 100) >= 45
+                          ? 'bg-[#E5C158]'
+                          : 'bg-rose-500'
+                    }`}
+                    style={{ width: `${Math.max(0, Math.min(100, robot.integrityPct ?? 100))}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 rounded bg-[#161B23] border border-[#222A36]">
+                <div className="text-[11px] text-[#9BA3B0]">Motor Temperature</div>
+                <div
+                  className={`mt-1 text-lg font-semibold font-mono-tabular ${
+                    (robot.motorTempC ?? 34) >= 78
+                      ? 'text-rose-400'
+                      : (robot.motorTempC ?? 34) >= 58
+                        ? 'text-[#E5C158]'
+                        : 'text-sky-300'
+                  }`}
+                >
+                  {(robot.motorTempC ?? 34).toFixed(1)} °C
+                </div>
+                <div className="mt-2 h-1.5 w-full rounded-full bg-[#0B0D10] overflow-hidden">
+                  <div
+                    className={`h-full transition-all ${
+                      (robot.motorTempC ?? 34) >= 78
+                        ? 'bg-rose-500'
+                        : (robot.motorTempC ?? 34) >= 58
+                          ? 'bg-[#E5C158]'
+                          : 'bg-sky-400'
+                    }`}
+                    style={{
+                      width: `${Math.max(0, Math.min(100, (((robot.motorTempC ?? 34) - 25) / 80) * 100))}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3 rounded bg-[#161B23] border border-[#222A36] grid grid-cols-2 gap-2.5 text-xs">
+              <div>
+                <div className="text-[#9BA3B0]">Actuator Status</div>
+                <div className="mt-0.5 font-mono-tabular font-semibold text-[#E5C158]">
+                  {robot.actuatorStatus ?? 'Standby'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[#9BA3B0]">Actuator Torque Load</div>
+                <div className="mt-0.5 font-mono-tabular font-semibold text-white">
+                  {(robot.actuatorLoadPct ?? 0).toFixed(0)}%
+                </div>
+              </div>
+              <div>
+                <div className="text-[#9BA3B0]">Drive Train</div>
+                <div className="mt-0.5 font-mono-tabular text-white capitalize">
+                  {robot.locomotionState.replace('_', ' ')} ({robot.speedMps.toFixed(2)} m/s)
+                </div>
+              </div>
+              <div>
+                <div className="text-[#9BA3B0]">Collisions Logged</div>
+                <div className="mt-0.5 font-mono-tabular text-white">{robot.collisionCount}</div>
+              </div>
+            </div>
+          </div>
         )}
 
         {activeTab === 'sensors' && (

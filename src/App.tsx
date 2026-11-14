@@ -23,6 +23,7 @@ import {
   Volume2,
   VolumeX,
   Wallet,
+  Wrench,
   X,
 } from 'lucide-react';
 import { FloatingTaskSnackbars } from './components/FloatingTaskSnackbars';
@@ -137,6 +138,7 @@ export default function App() {
   const [simSpeed, setSimSpeed] = useState<number>(1);
   const [showFpvPip, setShowFpvPip] = useState(true);
   const [showPerfOverlay, setShowPerfOverlay] = useState(true);
+  const [showDiagnosticsHud, setShowDiagnosticsHud] = useState(true);
   const [showTaskSnackbars, setShowTaskSnackbars] = useState(true);
   const [autoOptimize, setAutoOptimize] = useState(true);
   const [dockCollapsed, setDockCollapsed] = useState(false);
@@ -673,6 +675,7 @@ export default function App() {
               graphicsQuality={profile.settings.graphicsQuality}
               worldVersion={worldVersion}
               showPerfOverlay={showPerfOverlay}
+              showDiagnosticsHud={showDiagnosticsHud}
               autoOptimize={autoOptimize}
               onToggleAutoOptimize={() => setAutoOptimize((v) => !v)}
               activeOwnedRobot={ownedRobots.find((r) => r.robot_id === activeUnit?.model_id)}
@@ -797,6 +800,20 @@ export default function App() {
                 }`}
               >
                 <ListChecks size={15} />
+              </button>
+
+              <button
+                type="button"
+                title={showDiagnosticsHud ? 'Hide Unit Diagnostics HUD' : 'Show Unit Diagnostics HUD'}
+                aria-label="Toggle Unit Diagnostics HUD"
+                onClick={() => setShowDiagnosticsHud((v) => !v)}
+                className={`p-2 rounded transition-colors ${
+                  showDiagnosticsHud
+                    ? 'text-[#E5C158] bg-[#1A2029]'
+                    : 'text-[#CBD5E1] hover:text-white hover:bg-[#1E2530]'
+                }`}
+              >
+                <Wrench size={15} />
               </button>
 
               <button
