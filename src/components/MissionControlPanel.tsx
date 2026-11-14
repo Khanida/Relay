@@ -41,7 +41,7 @@ interface MissionControlPanelProps {
 }
 
 const ACTOR_COLORS: Record<AgentActor, string> = {
-  COMMANDER: 'text-orange-400',
+  COMMANDER: 'text-[#E5C158]',
   NAVIGATION: 'text-sky-400',
   SAFETY: 'text-rose-400',
   ROBOT: 'text-emerald-400',
@@ -120,8 +120,8 @@ export function MissionControlPanel({
                 onClick={() => onSelectUnit(idx)}
                 className={`px-2.5 py-1.5 rounded text-xs font-medium border text-left transition-colors ${
                   idx === selectedUnitIndex
-                    ? 'bg-[#1B222D] border-orange-500 text-white'
-                    : 'bg-[#0D1015] border-[#1F2630] text-[#9BA3B0] hover:text-white'
+                    ? 'bg-[#1B222D] border-[#D4AF37] text-white'
+                    : 'bg-[#0D1015] border-[#1F2630] text-[#CBD5E1] hover:text-white'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -215,7 +215,7 @@ export function MissionControlPanel({
                 </div>
                 <div>
                   <div className="text-[#9BA3B0]">State</div>
-                  <div className="mt-0.5 font-mono-tabular text-orange-400 capitalize">
+                  <div className="mt-0.5 font-mono-tabular text-[#E5C158] capitalize">
                     {robot.locomotionState.replace('_', ' ')}
                   </div>
                 </div>
@@ -238,8 +238,8 @@ export function MissionControlPanel({
                   Commander Objectives
                 </h2>
                 {plan && (
-                  <span className="text-[11px] text-[#9BA3B0]">
-                    {plan.provider === 'gemini' ? 'Gemini AI' : 'Deterministic Core'}
+                  <span className="text-[11px] text-[#CBD5E1]">
+                    RELAY Autonomous Core
                   </span>
                 )}
               </div>
@@ -275,10 +275,10 @@ export function MissionControlPanel({
                             obj.status === 'completed'
                               ? 'text-emerald-400'
                               : obj.status === 'active'
-                                ? 'text-orange-400'
+                                ? 'text-[#E5C158]'
                                 : obj.status === 'rejected'
                                   ? 'text-rose-400'
-                                  : 'text-[#9BA3B0]'
+                                  : 'text-[#CBD5E1]'
                           }`}
                         >
                           {obj.status}
@@ -450,7 +450,7 @@ export function MissionControlPanel({
               <button
                 type="button"
                 onClick={onRefreshHistory}
-                className="text-xs text-orange-400 hover:text-orange-300"
+                className="text-xs text-[#E5C158] hover:text-[#F0D37A]"
               >
                 Refresh
               </button>
@@ -468,7 +468,7 @@ export function MissionControlPanel({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium text-white truncate">{m.title}</span>
-                      <span className="font-mono-tabular font-semibold text-orange-400 shrink-0">
+                      <span className="font-mono-tabular font-semibold text-[#E5C158] shrink-0">
                         {m.total_score}/1000 ({m.grade})
                       </span>
                     </div>

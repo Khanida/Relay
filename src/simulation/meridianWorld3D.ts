@@ -419,7 +419,7 @@ export function buildMeridianWorld3D(
   chargeRing.position.y = 0.065;
   baseStation.add(chargeRing);
 
-  const gantryMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.4, metalness: 0.5 });
+  const gantryMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.3, metalness: 0.78 });
   for (const gx of [-1.0, 1.0]) {
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.8, 0.12), gantryMat);
     post.position.set(gx, 0.9, -0.95);
@@ -434,15 +434,15 @@ export function buildMeridianWorld3D(
   truckGroup.position.set(baseWorld.x - 1.6, 0, baseWorld.z - 5.2);
   const truckBody = new THREE.Mesh(
     new THREE.BoxGeometry(1.5, 0.9, 2.6),
-    new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4, metalness: 0.3 })
+    new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.35, metalness: 0.45 })
   );
   truckBody.position.y = 0.55;
   const truckStripe = new THREE.Mesh(
     new THREE.BoxGeometry(1.52, 0.18, 2.62),
-    new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.3 })
+    new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.28, metalness: 0.65 })
   );
   truckStripe.position.y = 0.45;
-  const strobe = new THREE.PointLight(0xf97316, 2.4, 8.0, 1.8);
+  const strobe = new THREE.PointLight(0xe5c158, 2.4, 8.0, 1.8);
   strobe.position.set(0, 1.25, 0.5);
   emergencyStrobes.push(strobe);
   truckGroup.add(truckBody, truckStripe, strobe);
@@ -471,7 +471,7 @@ export function buildMeridianWorld3D(
   survivorGroup.position.set(survWorld.x, 0, survWorld.z);
   const survTorso = new THREE.Mesh(
     new THREE.CapsuleGeometry(0.16, 0.32, 6, 10),
-    new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.65 })
+    new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.5 })
   );
   survTorso.position.set(0, 0.44, 0);
   const survHead = new THREE.Mesh(

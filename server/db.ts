@@ -1,7 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { EQUIPMENT_CATALOG, ROBOT_CATALOG, UPGRADE_COSTS } from '../src/shared/gameCatalog';
+import {
+  EQUIPMENT_CATALOG,
+  ROBOT_CATALOG,
+  STORE_CATALOG,
+  UPGRADE_COSTS,
+  computeRobotChargeStatus,
+} from '../src/shared/gameCatalog';
 import type {
   AgentEvent,
   EconomyTransaction,
@@ -13,6 +19,8 @@ import type {
   RegionId,
   RobotModelId,
   SaveSlotSummary,
+  StoreItemDef,
+  StoreSku,
   UpgradeCategory,
 } from '../src/shared/types';
 
@@ -134,6 +142,19 @@ function runMigrations() {
     );
   }
 
+  // Safe v3 migration: persistent battery percentage & timestamp for 24h recharge timers
+  const robotCols = db.prepare(`PRAGMA table_info(owned_robots)`).all() as Array<{ name: string }>;
+  const robotColNames = new Set(robotCols.map((c) => c.name));
+  if (!robotColNames.has('battery_pct')) {
+    db.exec(`ALTER TABLE owned_robots ADD COLUMN battery_pct REAL NOT NULL DEFAULT 100`);
+  }
+  if (!robotColNames.has('battery_updated_at')) {
+    db.exec(`ALTER TABLE owned_robots ADD COLUMN battery_updated_at TEXT NOT NULL DEFAULT ''`);
+    db.prepare(`UPDATE owned_robots SET battery_updated_at = ? WHERE battery_updated_at = ''`).run(
+      new Date().toISOString()
+    );
+  }
+
   ensureDefaultProfile();
 }
 
@@ -170,14 +191,16 @@ function ensureDefaultProfile() {
   if (!starter) {
     db.prepare(
       `INSERT INTO owned_robots (
-        robot_id, custom_name, hull_color, integrity_pct,
+        robot_id, custom_name, hull_color, integrity_pct, battery_pct, battery_updated_at,
         upgrades_json, equipped_modules_json, deployment_slot, purchased_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       'relay_01',
       'RELAY-01',
       ROBOT_CATALOG.relay_01.primaryColor,
       100,
+      100,
+      now,
       JSON.stringify({ battery: 0, speed: 0, lidar: 0, thermal: 0, weather_seal: 0, armor: 0 }),
       JSON.stringify([]),
       1,
@@ -252,21 +275,43 @@ export function updatePlayerProfile(patch: Partial<PlayerProfile>): PlayerProfil
   return merged;
 }
 
-export function listOwnedRobots(): OwnedRobotState[] {
+export function listOwnedRobots(nowMs = Date.now()): OwnedRobotState[] {
   ensureDefaultProfile();
+  const nowIso = new Date(nowMs).toISOString();
   const rows = db.prepare(`SELECT * FROM owned_robots ORDER BY purchased_at ASC`).all() as Array<
     Record<string, unknown>
   >;
-  return rows.map((r) => ({
-    robot_id: String(r.robot_id) as RobotModelId,
-    custom_name: String(r.custom_name),
-    hull_color: String(r.hull_color),
-    integrity_pct: Number(r.integrity_pct),
-    upgrades: JSON.parse(String(r.upgrades_json)),
-    equipped_modules: JSON.parse(String(r.equipped_modules_json)) as EquipmentModuleId[],
-    deployment_slot: r.deployment_slot === 1 || r.deployment_slot === 2 ? Number(r.deployment_slot) as 1 | 2 : null,
-    purchased_at: String(r.purchased_at),
-  }));
+  return rows.map((r) => {
+    const storedPct = Math.max(0, Math.min(100, Number(r.battery_pct ?? 100)));
+    const storedUpdatedAt = String(r.battery_updated_at || nowIso);
+    const robot: OwnedRobotState = {
+      robot_id: String(r.robot_id) as RobotModelId,
+      custom_name: String(r.custom_name),
+      hull_color: String(r.hull_color),
+      integrity_pct: Number(r.integrity_pct),
+      battery_pct: storedPct,
+      battery_updated_at: storedUpdatedAt,
+      upgrades: JSON.parse(String(r.upgrades_json)),
+      equipped_modules: JSON.parse(String(r.equipped_modules_json)) as EquipmentModuleId[],
+      deployment_slot:
+        r.deployment_slot === 1 || r.deployment_slot === 2 ? (Number(r.deployment_slot) as 1 | 2) : null,
+      purchased_at: String(r.purchased_at),
+    };
+
+    if (storedPct < 100) {
+      const status = computeRobotChargeStatus(robot, nowMs);
+      if (status.batteryPct - storedPct >= 0.05 || (status.batteryPct >= 100 && storedPct < 100)) {
+        robot.battery_pct = status.batteryPct;
+        robot.battery_updated_at = nowIso;
+        db.prepare(`UPDATE owned_robots SET battery_pct = ?, battery_updated_at = ? WHERE robot_id = ?`).run(
+          status.batteryPct,
+          nowIso,
+          robot.robot_id
+        );
+      }
+    }
+    return robot;
+  });
 }
 
 export function listTransactions(limit = 30): EconomyTransaction[] {
@@ -338,14 +383,16 @@ export function purchaseRobot(robotId: RobotModelId): {
 
   db.prepare(
     `INSERT INTO owned_robots (
-      robot_id, custom_name, hull_color, integrity_pct,
+      robot_id, custom_name, hull_color, integrity_pct, battery_pct, battery_updated_at,
       upgrades_json, equipped_modules_json, deployment_slot, purchased_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     robotId,
     catalog.codeName,
     catalog.primaryColor,
     100,
+    100,
+    now,
     JSON.stringify({ battery: 0, speed: 0, lidar: 0, thermal: 0, weather_seal: 0, armor: 0 }),
     JSON.stringify([]),
     autoSlot,
@@ -499,6 +546,86 @@ export function repairOwnedRobot(robotId: RobotModelId): {
   return { profile: nextProfile, robots: listOwnedRobots() };
 }
 
+export function updateRobotBattery(
+  robotId: RobotModelId,
+  batteryPct: number,
+  updatedAtIso = new Date().toISOString()
+): OwnedRobotState[] {
+  const clamped = Number(Math.max(0, Math.min(100, batteryPct)).toFixed(2));
+  db.prepare(`UPDATE owned_robots SET battery_pct = ?, battery_updated_at = ? WHERE robot_id = ?`).run(
+    clamped,
+    updatedAtIso,
+    robotId
+  );
+  return listOwnedRobots();
+}
+
+export function rechargeRobotBatteryFull(robotId?: RobotModelId): OwnedRobotState[] {
+  const now = new Date().toISOString();
+  if (robotId) {
+    db.prepare(`UPDATE owned_robots SET battery_pct = 100, battery_updated_at = ? WHERE robot_id = ?`).run(
+      now,
+      robotId
+    );
+  } else {
+    db.prepare(`UPDATE owned_robots SET battery_pct = 100, battery_updated_at = ?`).run(now);
+  }
+  return listOwnedRobots();
+}
+
+export function processStorePurchase(
+  sku: StoreSku,
+  targetRobotId?: RobotModelId,
+  paymentRef = 'sandbox'
+): {
+  profile: PlayerProfile;
+  robots: OwnedRobotState[];
+  transactions: EconomyTransaction[];
+  grantedItem: StoreItemDef;
+} {
+  const item = STORE_CATALOG.find((s) => s.sku === sku);
+  if (!item) {
+    throw new Error(`Unknown store SKU: ${sku}`);
+  }
+
+  let profile = getPlayerProfile();
+  let robots = listOwnedRobots();
+
+  if (item.kind === 'currency' && item.creditsRc) {
+    profile = recordTransaction(
+      item.creditsRc,
+      'store_purchase',
+      `Store Purchase: ${item.title} ($${item.priceUsd} · ${paymentRef})`
+    );
+  } else if (item.kind === 'battery') {
+    if (item.fullChargeScope === 'fleet') {
+      robots = rechargeRobotBatteryFull();
+      profile = recordTransaction(
+        0,
+        'recharge',
+        `Store Purchase: ${item.title} — All units 100% ($${item.priceUsd} · ${paymentRef})`
+      );
+    } else {
+      const slot1 = robots.find((r) => r.deployment_slot === 1) ?? robots[0];
+      const targetId = targetRobotId ?? slot1?.robot_id ?? 'relay_01';
+      robots = rechargeRobotBatteryFull(targetId);
+      const targetName = robots.find((r) => r.robot_id === targetId)?.custom_name ?? targetId;
+      profile = recordTransaction(
+        0,
+        'recharge',
+        `Store Purchase: Full 100% Recharge for ${targetName} ($${item.priceUsd} · ${paymentRef})`
+      );
+    }
+  }
+
+  return {
+    profile,
+    robots,
+    transactions: listTransactions(30),
+    grantedItem: item,
+  };
+}
+
 export function resetNewGame(): { profile: PlayerProfile; robots: OwnedRobotState[] } {
   db.exec(`
     DELETE FROM player_profile;
@@ -575,16 +702,19 @@ export function loadSaveSlot(slotId: string): {
   db.prepare(`DELETE FROM owned_robots`).run();
   const ins = db.prepare(
     `INSERT INTO owned_robots (
-      robot_id, custom_name, hull_color, integrity_pct,
+      robot_id, custom_name, hull_color, integrity_pct, battery_pct, battery_updated_at,
       upgrades_json, equipped_modules_json, deployment_slot, purchased_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
+  const now = new Date().toISOString();
   for (const r of snap.robots) {
     ins.run(
       r.robot_id,
       r.custom_name,
       r.hull_color,
       r.integrity_pct,
+      r.battery_pct ?? 100,
+      r.battery_updated_at ?? now,
       JSON.stringify(r.upgrades),
       JSON.stringify(r.equipped_modules),
       r.deployment_slot,

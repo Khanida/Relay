@@ -75,8 +75,8 @@ function updateStatusColor(mat: THREE.MeshStandardMaterial, state: LocomotionSta
     mat.color.setHex(0x38bdf8);
     mat.emissive.setHex(0x38bdf8);
   } else if (state === 'walking' || state === 'turning' || state === 'hovering' || state === 'swimming') {
-    mat.color.setHex(0xf97316);
-    mat.emissive.setHex(0xf97316);
+    mat.color.setHex(0xd4af37);
+    mat.emissive.setHex(0xd4af37);
   } else {
     mat.color.setHex(0x10b981);
     mat.emissive.setHex(0x10b981);
@@ -99,7 +99,7 @@ export function createRobotModel(
       quad.bodyGroup.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
-          if (mat && mat.color && mat.color.getHexString() === 'ea580c') {
+          if (mat && mat.color && mat.color.getHexString() === 'd4af37') {
             mat.color.set(customHullColor);
           }
         }
@@ -170,7 +170,7 @@ export function createRobotModel(
     quad.bodyGroup.traverse((c) => {
       if ((c as THREE.Mesh).isMesh) {
         const m = (c as THREE.Mesh).material as THREE.MeshStandardMaterial;
-        if (m && m.color && m.color.getHexString() === 'ea580c') {
+        if (m && m.color && m.color.getHexString() === 'd4af37') {
           m.color.set(hullHex);
         }
       }

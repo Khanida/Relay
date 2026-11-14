@@ -51,14 +51,14 @@ export class QuadrupedRobotModel {
     this.root.add(this.bodyGroup);
 
     const chassisMat = new THREE.MeshStandardMaterial({
-      color: 0x20252d,
-      roughness: 0.42,
-      metalness: 0.78,
+      color: 0x2b323d,
+      roughness: 0.36,
+      metalness: 0.82,
     });
     const armorMat = new THREE.MeshStandardMaterial({
-      color: 0xea580c, // Industrial rescue orange
-      roughness: 0.38,
-      metalness: 0.25,
+      color: 0xd4af37, // Brushed rescue gold
+      roughness: 0.28,
+      metalness: 0.72,
     });
     const jointMat = new THREE.MeshStandardMaterial({
       color: 0x111419,
@@ -173,8 +173,8 @@ export class QuadrupedRobotModel {
     const lidarRing = new THREE.Mesh(
       new THREE.CylinderGeometry(0.057, 0.057, 0.018, 16),
       new THREE.MeshStandardMaterial({
-        color: 0xf97316,
-        emissive: 0xf97316,
+        color: 0xd4af37,
+        emissive: 0xd4af37,
         emissiveIntensity: 1.4,
       })
     );
@@ -248,7 +248,7 @@ export class QuadrupedRobotModel {
     const lidarGeom = new THREE.BufferGeometry();
     lidarGeom.setAttribute('position', new THREE.BufferAttribute(this.lidarPositions, 3));
     const lidarMat = new THREE.LineBasicMaterial({
-      color: 0xf97316,
+      color: 0xe5c158,
       transparent: true,
       opacity: 0.48,
     });
@@ -306,8 +306,8 @@ export class QuadrupedRobotModel {
       this.statusBarMat.color.setHex(0x38bdf8);
       this.statusBarMat.emissive.setHex(0x38bdf8);
     } else if (locomotionState === 'walking' || locomotionState === 'turning') {
-      this.statusBarMat.color.setHex(0xf97316);
-      this.statusBarMat.emissive.setHex(0xf97316);
+      this.statusBarMat.color.setHex(0xd4af37);
+      this.statusBarMat.emissive.setHex(0xd4af37);
     } else {
       this.statusBarMat.color.setHex(0x10b981);
       this.statusBarMat.emissive.setHex(0x10b981);

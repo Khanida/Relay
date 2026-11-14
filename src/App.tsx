@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Activity,
+  BatteryCharging,
   ChevronDown,
   ChevronUp,
   Crosshair,
   Film,
   Gamepad2,
+  ListChecks,
   LocateFixed,
   OctagonAlert,
   Orbit,
@@ -20,8 +22,10 @@ import {
   Video,
   Volume2,
   VolumeX,
+  Wallet,
   X,
 } from 'lucide-react';
+import { FloatingTaskSnackbars } from './components/FloatingTaskSnackbars';
 import { GarageView } from './components/GarageView';
 import { MainMenuOverlay, type AppScreen } from './components/MainMenuOverlay';
 import { MissionBoardView } from './components/MissionBoardView';
@@ -29,9 +33,10 @@ import { MissionCompleteModal } from './components/MissionCompleteModal';
 import { MissionControlPanel, type PanelTab } from './components/MissionControlPanel';
 import { RelayViewport, type CameraMode } from './components/RelayViewport';
 import { SettingsModal } from './components/SettingsModal';
+import { StoreModal } from './components/StoreModal';
 import { StoryBriefingModal } from './components/StoryBriefingModal';
 import { WorldMapView } from './components/WorldMapView';
-import { CAMPAIGN_MISSIONS, MERIDIAN_REGIONS } from './shared/gameCatalog';
+import { CAMPAIGN_MISSIONS, MERIDIAN_REGIONS, computeRobotChargeStatus } from './shared/gameCatalog';
 import type {
   CampaignMissionDef,
   ControlMode,
@@ -132,11 +137,13 @@ export default function App() {
   const [simSpeed, setSimSpeed] = useState<number>(1);
   const [showFpvPip, setShowFpvPip] = useState(true);
   const [showPerfOverlay, setShowPerfOverlay] = useState(true);
+  const [showTaskSnackbars, setShowTaskSnackbars] = useState(true);
   const [autoOptimize, setAutoOptimize] = useState(true);
   const [dockCollapsed, setDockCollapsed] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<PanelTab>('overview');
   const [showDebriefModal, setShowDebriefModal] = useState(false);
+  const [showStore, setShowStore] = useState(false);
 
   const savedMissionIdsRef = useRef<Set<string>>(new Set());
 
@@ -230,10 +237,64 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Persist completed/aborted mission + award RC & unlock chapters
+  const syncUnitBatteriesToServer = useCallback(async () => {
+    if (engine.units.length === 0) return;
+    try {
+      const res = await fetch('/api/garage/battery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          updates: engine.units.map((u) => ({
+            robotId: u.model_id,
+            batteryPct: u.batteryPct,
+          })),
+        }),
+      });
+      if (res.ok) {
+        const d = (await res.json()) as { robots: OwnedRobotState[] };
+        if (Array.isArray(d.robots)) {
+          setOwnedRobots(d.robots);
+        }
+      }
+    } catch {
+      // Ignore offline battery sync errors
+    }
+  }, [engine]);
+
+  // Periodically persist battery drain while units are active in mission
+  useEffect(() => {
+    if (engine.phase !== 'executing' && engine.phase !== 'returning') return;
+    const id = window.setInterval(() => {
+      syncUnitBatteriesToServer();
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, [engine.phase, syncUnitBatteriesToServer]);
+
+  // Refresh live standby battery charge display once per 15s while idle/recharging
+  useEffect(() => {
+    const anyCharging = ownedRobots.some((r) => (r.battery_pct ?? 100) < 99.9);
+    if (!anyCharging) return;
+    const id = window.setInterval(() => {
+      if (engine.phase === 'standby' || engine.phase === 'paused' || engine.phase === 'failed') {
+        forceSync();
+      }
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, [ownedRobots, engine.phase, forceSync]);
+
+  // Persist completed/aborted/failed mission + award RC & unlock chapters
   useEffect(() => {
     if (
-      (engine.phase === 'completed' || engine.phase === 'aborted') &&
+      engine.phase === 'completed' ||
+      engine.phase === 'aborted' ||
+      engine.phase === 'failed' ||
+      engine.phase === 'paused'
+    ) {
+      syncUnitBatteriesToServer();
+    }
+
+    if (
+      (engine.phase === 'completed' || engine.phase === 'aborted' || engine.phase === 'failed') &&
       engine.plan &&
       engine.lastScore &&
       !savedMissionIdsRef.current.has(engine.plan.mission_id)
@@ -339,13 +400,9 @@ export default function App() {
       }
 
       const data = (await res.json()) as { plan: MissionPlan; warning?: string };
-      if (data.warning) {
-        setApiNotice(data.warning);
-      }
       engine.startMission(data.plan);
       forceSync();
     } catch {
-      setApiNotice('Offline deterministic Commander mode active.');
       engine.startFromInstruction(text, missionId);
       forceSync();
     } finally {
@@ -353,14 +410,13 @@ export default function App() {
     }
   };
 
-  const handleResetScene = () => {
-    engine.reset();
+  const handleResetScene = async () => {
+    await syncUnitBatteriesToServer();
     handleSetControlMode('auto');
     setShowDebriefModal(false);
     setLastPayout(null);
     setApiNotice(null);
-    setWorldVersion((v) => v + 1);
-    forceSync();
+    syncEngineToProfileAndFleet(profile, ownedRobots, activeCampaignMission);
   };
 
   const handleUpdateSettings = async (patch: Partial<PlayerSettings>) => {
@@ -445,7 +501,7 @@ export default function App() {
         <button
           type="button"
           onClick={() => setScreen('menu')}
-          className="font-display text-lg font-bold tracking-wider text-white whitespace-nowrap shrink-0 hover:text-orange-400 transition-colors"
+          className="font-display text-lg font-bold tracking-wider text-white whitespace-nowrap shrink-0 hover:text-[#E5C158] transition-colors"
         >
           RELAY
         </button>
@@ -467,7 +523,7 @@ export default function App() {
               onClick={() => setScreen(id)}
               className={`whitespace-nowrap shrink-0 transition-colors ${
                 screen === id
-                  ? 'text-orange-400 underline underline-offset-4'
+                  ? 'text-[#E5C158] underline underline-offset-4'
                   : 'text-[#9BA3B0] hover:text-white'
               }`}
             >
@@ -476,17 +532,25 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Zone 3: Wallet & Primary Scene Reset / Deploy */}
-        <div className="flex items-center gap-4 shrink-0">
-          <div className="hidden sm:block text-right font-mono-tabular text-xs leading-tight">
-            <div className="text-orange-400 font-semibold">{profile.credits_rc.toLocaleString()} RC</div>
-            <div className="text-[#9BA3B0]">{activeRegionMeta.name}</div>
-          </div>
+        {/* Zone 3: Wallet, Store & Primary Scene Reset / Deploy */}
+        <div className="flex items-center gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowStore(true)}
+            title="Buy RELAY Credits or Instant 100% Battery Recharge"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-[#161B23] hover:bg-[#1E2531] border border-[#D4AF37]/45 text-left transition-colors whitespace-nowrap shrink-0"
+          >
+            <Wallet size={14} className="text-[#E5C158] shrink-0" />
+            <div className="font-mono-tabular text-xs leading-tight">
+              <div className="text-[#E5C158] font-semibold">{profile.credits_rc.toLocaleString()} RC</div>
+              <div className="text-[10px] text-[#CBD5E1] hidden sm:block">{activeRegionMeta.name}</div>
+            </div>
+          </button>
           {screen === 'operations' ? (
             <button
               type="button"
               onClick={handleResetScene}
-              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-white bg-[#1D2430] hover:bg-[#283141] border border-[#2D3748] rounded transition-colors whitespace-nowrap shrink-0"
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-[#E2E8F0] bg-[#1D2430] hover:bg-[#283141] border border-[#94A3B8]/40 rounded transition-colors whitespace-nowrap shrink-0"
             >
               <RotateCcw size={13} />
               Reset Scene
@@ -495,7 +559,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setScreen('operations')}
-              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-white bg-orange-600 hover:bg-orange-500 rounded transition-colors whitespace-nowrap shrink-0"
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-[#0B0D10] bg-[#D4AF37] hover:bg-[#E2C04D] rounded transition-colors whitespace-nowrap shrink-0"
             >
               Field View
             </button>
@@ -533,6 +597,7 @@ export default function App() {
             postGarage('/api/garage/customize', { robotId, customName, hullColor })
           }
           onRepair={(robotId: RobotModelId) => postGarage('/api/garage/repair', { robotId })}
+          onOpenStore={() => setShowStore(true)}
         />
       )}
 
@@ -610,11 +675,31 @@ export default function App() {
               showPerfOverlay={showPerfOverlay}
               autoOptimize={autoOptimize}
               onToggleAutoOptimize={() => setAutoOptimize((v) => !v)}
+              activeOwnedRobot={ownedRobots.find((r) => r.robot_id === activeUnit?.model_id)}
+              onOpenStore={() => setShowStore(true)}
+              rightOverlay={
+                showTaskSnackbars ? (
+                  <FloatingTaskSnackbars
+                    plan={engine.plan}
+                    phase={engine.phase}
+                    elapsedSec={engine.elapsedSec}
+                    lastScore={engine.lastScore}
+                    regionMissions={CAMPAIGN_MISSIONS.filter(
+                      (m) =>
+                        m.regionId === profile.active_region &&
+                        (m.chapter === 0 || m.chapter <= profile.current_chapter)
+                    )}
+                    completedMissionIds={profile.completed_mission_ids}
+                    activeCampaignMissionId={activeCampaignMission?.id}
+                    onSelectMission={handleLaunchCampaignMission}
+                  />
+                ) : undefined
+              }
               onTickSync={forceSync}
             />
 
-            {/* Top-Right Viewport Icon Toolbar: Camera Views, Follow Robot, Robot FPV, Remote Control, LiDAR, Audio, HUD */}
-            <div className="absolute top-4 right-4 z-20 flex items-center gap-1 p-1 rounded-lg bg-[#12161C]/95 border border-[#28313E]">
+            {/* Top-Right Viewport Icon Toolbar: Camera Views, Follow Robot, Robot FPV, Remote Control, LiDAR, Audio, Task Snackbars, Perf, HUD */}
+            <div className="absolute top-4 right-4 z-20 flex items-center gap-1 p-1 rounded-lg bg-[#12161C]/95 border border-[#94A3B8]/35">
               {(
                 [
                   { mode: 'orbit', label: 'Orbit Camera', Icon: Orbit },
@@ -632,8 +717,8 @@ export default function App() {
                   onClick={() => setCameraMode(mode)}
                   className={`p-2 rounded transition-colors ${
                     cameraMode === mode
-                      ? 'bg-orange-600 text-white'
-                      : 'text-[#9BA3B0] hover:text-white hover:bg-[#1E2530]'
+                      ? 'bg-[#D4AF37] text-[#0B0D10]'
+                      : 'text-[#CBD5E1] hover:text-white hover:bg-[#1E2530]'
                   }`}
                 >
                   <Icon size={15} />
@@ -681,8 +766,8 @@ export default function App() {
                 onClick={() => handleUpdateSettings({ showLidar: !profile.settings.showLidar })}
                 className={`p-2 rounded transition-colors ${
                   profile.settings.showLidar
-                    ? 'text-orange-400 bg-[#1A2029]'
-                    : 'text-[#9BA3B0] hover:text-white hover:bg-[#1E2530]'
+                    ? 'text-[#E5C158] bg-[#1A2029]'
+                    : 'text-[#CBD5E1] hover:text-white hover:bg-[#1E2530]'
                 }`}
               >
                 <Radar size={15} />
@@ -695,9 +780,23 @@ export default function App() {
                 onClick={() =>
                   handleUpdateSettings({ audioEnabled: !profile.settings.audioEnabled })
                 }
-                className="p-2 rounded text-[#9BA3B0] hover:text-white hover:bg-[#1E2530] transition-colors"
+                className="p-2 rounded text-[#CBD5E1] hover:text-white hover:bg-[#1E2530] transition-colors"
               >
                 {profile.settings.audioEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
+              </button>
+
+              <button
+                type="button"
+                title={showTaskSnackbars ? 'Hide Floating Task Snackbars' : 'Show Floating Task Snackbars'}
+                aria-label="Toggle Floating Task Snackbars"
+                onClick={() => setShowTaskSnackbars((v) => !v)}
+                className={`p-2 rounded transition-colors ${
+                  showTaskSnackbars
+                    ? 'text-[#E5C158] bg-[#1A2029]'
+                    : 'text-[#CBD5E1] hover:text-white hover:bg-[#1E2530]'
+                }`}
+              >
+                <ListChecks size={15} />
               </button>
 
               <button
@@ -708,7 +807,7 @@ export default function App() {
                 className={`p-2 rounded transition-colors ${
                   showPerfOverlay
                     ? 'text-sky-400 bg-[#1A2230]'
-                    : 'text-[#9BA3B0] hover:text-white hover:bg-[#1E2530]'
+                    : 'text-[#CBD5E1] hover:text-white hover:bg-[#1E2530]'
                 }`}
               >
                 <Activity size={15} />
@@ -719,7 +818,7 @@ export default function App() {
                 title={panelOpen ? 'Hide Mission HUD' : 'Show Mission HUD'}
                 aria-label={panelOpen ? 'Hide Mission HUD' : 'Show Mission HUD'}
                 onClick={() => setPanelOpen((p) => !p)}
-                className="p-2 rounded text-[#9BA3B0] hover:text-white hover:bg-[#1E2530] transition-colors"
+                className="p-2 rounded text-[#CBD5E1] hover:text-white hover:bg-[#1E2530] transition-colors"
               >
                 {panelOpen ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
               </button>
@@ -735,22 +834,54 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setDockCollapsed((c) => !c)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-t-md bg-[#12161C]/95 border border-b-0 border-[#28313E] text-[11px] font-medium text-[#9BA3B0] hover:text-white"
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-t-md bg-[#12161C]/95 border border-b-0 border-[#94A3B8]/35 text-[11px] font-medium text-[#CBD5E1] hover:text-white"
                 >
                   {dockCollapsed ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                   {dockCollapsed ? 'Show Controls (H)' : 'Hide Controls (H)'}
                 </button>
               </div>
 
-              <div className="rounded-lg bg-[#12161C]/95 border border-[#28313E] p-3.5 space-y-2.5">
+              <div className="rounded-lg bg-[#12161C]/95 border border-[#94A3B8]/35 p-3.5 space-y-2.5">
+                {(() => {
+                  const slot1Owned = ownedRobots.find((r) => r.robot_id === activeUnit?.model_id);
+                  const chargeStatus = slot1Owned ? computeRobotChargeStatus(slot1Owned) : null;
+                  const unitDepleted =
+                    (activeUnit && activeUnit.batteryPct <= 0.5) ||
+                    Boolean(chargeStatus && chargeStatus.isDepleted);
+                  if (!unitDepleted) return null;
+                  return (
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-rose-200 bg-rose-950/60 border border-rose-700/60 rounded px-3 py-2">
+                      <span className="inline-flex items-center gap-1.5">
+                        <BatteryCharging size={14} className="text-[#E5C158] shrink-0" />
+                        Battery depleted ({chargeStatus?.formattedRemaining ?? '24h 00m'} to full). Upgrade Battery, switch robots, or Instant Charge.
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setScreen('garage')}
+                          className="px-2 py-1 rounded bg-[#1D2430] hover:bg-[#283141] border border-[#94A3B8]/40 text-white text-[11px]"
+                        >
+                          Garage
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowStore(true)}
+                          className="px-2.5 py-1 rounded bg-[#D4AF37] hover:bg-[#E5C158] text-[#0B0D10] font-semibold text-[11px]"
+                        >
+                          Instant 100%
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {apiNotice && (
-                  <div className="flex items-center justify-between gap-2 text-[11px] text-[#D1D5DB] bg-[#181E27] border border-[#2B3544] rounded px-2.5 py-1.5">
+                  <div className="flex items-center justify-between gap-2 text-[11px] text-[#E2E8F0] bg-[#181E27] border border-[#94A3B8]/30 rounded px-2.5 py-1.5">
                     <span className="truncate">{apiNotice}</span>
                     <button
                       type="button"
                       onClick={() => setApiNotice(null)}
                       aria-label="Dismiss notice"
-                      className="text-[#9BA3B0] hover:text-white shrink-0"
+                      className="text-[#CBD5E1] hover:text-white shrink-0"
                     >
                       <X size={13} />
                     </button>
@@ -769,12 +900,12 @@ export default function App() {
                     value={instruction}
                     onChange={(e) => setInstruction(e.target.value)}
                     placeholder="Enter natural-language mission directive..."
-                    className="flex-1 min-w-0 px-3 py-2 text-sm bg-[#0B0D10] border border-[#27303D] rounded text-white placeholder:text-[#6B7280] focus:outline-none focus:border-orange-500"
+                    className="flex-1 min-w-0 px-3 py-2 text-sm bg-[#0B0D10] border border-[#27303D] rounded text-white placeholder:text-[#6B7280] focus:outline-none focus:border-[#D4AF37]"
                   />
                   <button
                     type="submit"
                     disabled={isSubmitting || !instruction.trim()}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-orange-600 hover:bg-orange-500 disabled:opacity-50 rounded transition-colors whitespace-nowrap shrink-0"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-[#0B0D10] bg-[#D4AF37] hover:bg-[#E2C04D] disabled:opacity-50 rounded transition-colors whitespace-nowrap shrink-0"
                   >
                     <Send size={13} />
                     {isSubmitting ? 'Planning...' : 'Run Mission'}
@@ -972,6 +1103,21 @@ export default function App() {
             setScreen('missions');
           }}
           onDismiss={() => setShowDebriefModal(false)}
+        />
+      )}
+
+      {showStore && (
+        <StoreModal
+          profile={profile}
+          ownedRobots={ownedRobots}
+          onClose={() => setShowStore(false)}
+          onPurchaseComplete={(data) => {
+            setProfile(data.profile);
+            setOwnedRobots(data.robots);
+            setTransactions((data.transactions as EconomyTransaction[]) || []);
+            engine.updateUnitBatteriesFromFleet(data.robots);
+            forceSync();
+          }}
         />
       )}
     </div>

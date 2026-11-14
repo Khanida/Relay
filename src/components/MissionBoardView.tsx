@@ -55,7 +55,7 @@ export function MissionBoardView({
         <div className="space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-[11px] font-medium text-orange-400">
+              <div className="text-[11px] font-medium text-[#E5C158]">
                 {mission.chapter > 0 ? `Level ${mission.chapter}` : 'Repeatable Side Op'} ·{' '}
                 {region.name}
               </div>
@@ -125,7 +125,7 @@ export function MissionBoardView({
             type="button"
             disabled={!unlocked}
             onClick={() => onLaunchMission(mission)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-orange-600 hover:bg-orange-500 disabled:bg-[#1E242E] disabled:text-[#7B8494] rounded transition-colors shrink-0"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-[#0B0D10] bg-[#D4AF37] hover:bg-[#E2C04D] disabled:bg-[#1E242E] disabled:text-[#7B8494] rounded transition-colors shrink-0"
           >
             {unlocked ? (
               <>
@@ -160,8 +160,8 @@ export function MissionBoardView({
               onClick={() => onFilterChange('ALL')}
               className={`px-3 py-1.5 text-xs rounded border ${
                 filterRegion === 'ALL'
-                  ? 'bg-orange-600 border-orange-500 text-white'
-                  : 'bg-[#12161D] border-[#242C38] text-[#9BA3B0] hover:text-white'
+                  ? 'bg-[#D4AF37] border-[#E2C04D] text-[#0B0D10] font-semibold'
+                  : 'bg-[#12161D] border-[#242C38] text-[#CBD5E1] hover:text-white'
               }`}
             >
               All Regions
@@ -173,8 +173,8 @@ export function MissionBoardView({
                 onClick={() => onFilterChange(reg.id)}
                 className={`px-3 py-1.5 text-xs rounded border ${
                   filterRegion === reg.id
-                    ? 'bg-orange-600 border-orange-500 text-white'
-                    : 'bg-[#12161D] border-[#242C38] text-[#9BA3B0] hover:text-white'
+                    ? 'bg-[#D4AF37] border-[#E2C04D] text-[#0B0D10] font-semibold'
+                    : 'bg-[#12161D] border-[#242C38] text-[#CBD5E1] hover:text-white'
                 }`}
               >
                 {reg.name}

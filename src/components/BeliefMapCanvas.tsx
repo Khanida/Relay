@@ -68,7 +68,7 @@ export function BeliefMapCanvas({
             if (cell === 'wall') color = '#475569';
             else if (cell === 'mountain_cliff') color = '#57534e';
             else if (cell === 'rubble') color = '#64748b';
-            else if (cell === 'collapsed_passage') color = '#f97316';
+            else if (cell === 'collapsed_passage') color = '#d4af37';
             else if (cell === 'staircase') color = '#52525b';
             else if (cell === 'road') color = '#1e293b';
             else if (cell === 'bridge') color = '#78716c';
@@ -133,7 +133,7 @@ export function BeliefMapCanvas({
       ctx.save();
       ctx.translate(rx, rz);
       ctx.rotate(-robot.headingRad + Math.PI / 2);
-      ctx.fillStyle = idx === 0 ? '#f97316' : '#10b981';
+      ctx.fillStyle = idx === 0 ? '#e5c158' : '#10b981';
       ctx.beginPath();
       ctx.moveTo(cellW * 0.55, 0);
       ctx.lineTo(-cellW * 0.35, -cellH * 0.35);

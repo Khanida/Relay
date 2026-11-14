@@ -247,7 +247,10 @@ export class MissionSimulationEngine {
         headingRad: Math.PI / 2,
         speedMps: 0,
         turnRateRad: 0,
-        batteryPct: 100,
+        batteryPct:
+          typeof spec.battery_pct === 'number'
+            ? Math.max(0, Math.min(100, spec.battery_pct))
+            : 100,
         integrityPct: spec.integrity_pct ?? 100,
         locomotionState: 'docked',
         taskQueue: [],
@@ -337,6 +340,24 @@ export class MissionSimulationEngine {
       }
     }
 
+    if (this.units.every((u) => u.batteryPct <= 0.5)) {
+      this.phase = 'failed';
+      this.finalizeScore(false);
+      for (const u of this.units) {
+        u.speedMps = 0;
+        u.turnRateRad = 0;
+        u.locomotionState = 'emergency_stop';
+      }
+      this.syncPrimaryMirrors();
+      this.callbacks.onSoundCue?.('safety_alert');
+      this.emit(
+        'SAFETY',
+        'safety_rejection',
+        'All deployed units have depleted batteries (0%). Wait for 24h recharge, upgrade Battery/switch robot, or use Instant Full Charge.'
+      );
+      return;
+    }
+
     this.plan = {
       ...plan,
       objectives: coordinatedObjectives,
@@ -346,7 +367,7 @@ export class MissionSimulationEngine {
     this.emit(
       'COMMANDER',
       'mission_status',
-      `Mission received (${plan.provider === 'gemini' ? 'Gemini AI' : 'Deterministic Core'}): "${plan.original_instruction}"`,
+      `Mission received (RELAY Autonomous Core): "${plan.original_instruction}"`,
       { mission_id: plan.mission_id, objectiveCount: coordinatedObjectives.length }
     );
 
@@ -359,6 +380,19 @@ export class MissionSimulationEngine {
         this.advanceUnitToNextTask(unit);
       } else {
         unit.locomotionState = 'idle';
+      }
+    }
+    this.syncPrimaryMirrors();
+  }
+
+  public updateUnitBatteriesFromFleet(robots: OwnedRobotState[]) {
+    for (const unit of this.units) {
+      const match = robots.find((r) => r.robot_id === unit.model_id);
+      if (match && typeof match.battery_pct === 'number') {
+        unit.batteryPct = Math.max(0, Math.min(100, match.battery_pct));
+        if (unit.batteryPct > 18) {
+          unit.lowBatteryTriggered = false;
+        }
       }
     }
     this.syncPrimaryMirrors();
@@ -594,12 +628,38 @@ export class MissionSimulationEngine {
       0,
       unit.batteryPct - Math.abs(stepDist) * 0.35 * unit.stats.batteryDrainMultiplier * drainScale
     );
+    if (unit.batteryPct <= 0) {
+      this.handleBatteryDepleted(unit);
+      return;
+    }
     if (!unit.stats.capabilities.aerial && unit.speedMps > 0.2) {
       this.callbacks.onSoundCue?.('footstep');
     }
   }
 
+  private handleBatteryDepleted(unit: RobotUnitRuntime) {
+    unit.batteryPct = 0;
+    unit.speedMps = 0;
+    unit.turnRateRad = 0;
+    unit.locomotionState = 'emergency_stop';
+    const anyLeft = this.units.some((u) => u.batteryPct > 0.1);
+    if (!anyLeft || this.controlMode === 'manual') {
+      this.phase = 'failed';
+      this.finalizeScore(false);
+    }
+    this.callbacks.onSoundCue?.('safety_alert');
+    this.emit(
+      'SAFETY',
+      'safety_rejection',
+      `[${unit.name}] Battery depleted (0%). Recharge cycle initiated (${unit.stats.effectiveChargeHours}h to 100%). Upgrade Battery or switch units in Garage.`
+    );
+  }
+
   private stepUnitAutonomous(unit: RobotUnitRuntime, dt: number) {
+    if (unit.batteryPct <= 0) {
+      this.handleBatteryDepleted(unit);
+      return;
+    }
     // 1. Sample sensors from ground truth
     const sensorStep = sampleRobotSensors(
       unit.pos.x,
@@ -821,6 +881,10 @@ export class MissionSimulationEngine {
       0,
       unit.batteryPct - (stepDist * 0.48 + dt * 0.12) * unit.stats.batteryDrainMultiplier * drainScale
     );
+    if (unit.batteryPct <= 0) {
+      this.handleBatteryDepleted(unit);
+      return;
+    }
     if (!unit.stats.capabilities.aerial && unit.speedMps > 0.2) {
       this.callbacks.onSoundCue?.('footstep');
     }

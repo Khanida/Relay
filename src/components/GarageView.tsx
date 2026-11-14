@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { Check, Lock, Shield, Wrench } from 'lucide-react';
+import { BatteryCharging, Check, Lock, Shield, Wrench } from 'lucide-react';
 import {
   EQUIPMENT_CATALOG,
   ROBOT_CATALOG,
   UPGRADE_COSTS,
   computeEffectiveRobotStats,
+  computeRobotChargeStatus,
 } from '../shared/gameCatalog';
 import type {
   EquipmentModuleId,
@@ -26,9 +27,10 @@ interface GarageViewProps {
   onDeploySlot: (robotId: RobotModelId, slot: 1 | 2 | null) => Promise<void>;
   onCustomize: (robotId: RobotModelId, name: string, hullColor: string) => Promise<void>;
   onRepair: (robotId: RobotModelId) => Promise<void>;
+  onOpenStore?: () => void;
 }
 
-const PAINT_SWATCHES = ['#ea580c', '#0284c7', '#eab308', '#10b981', '#dc2626', '#e2e8f0'];
+const PAINT_SWATCHES = ['#d4af37', '#cbd5e1', '#0284c7', '#10b981', '#dc2626', '#94a3b8'];
 
 export function GarageView({
   profile,
@@ -39,6 +41,7 @@ export function GarageView({
   onDeploySlot,
   onCustomize,
   onRepair,
+  onOpenStore,
 }: GarageViewProps) {
   const catalogList = Object.values(ROBOT_CATALOG);
   const [selectedId, setSelectedId] = useState<RobotModelId>('relay_01');
@@ -100,7 +103,7 @@ export function GarageView({
 
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(1.06, 1.12, 32),
-      new THREE.MeshBasicMaterial({ color: 0xf97316, side: THREE.DoubleSide })
+      new THREE.MeshBasicMaterial({ color: 0xd4af37, side: THREE.DoubleSide })
     );
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.005;
@@ -158,7 +161,7 @@ export function GarageView({
         <div className="lg:col-span-4 space-y-2.5">
           <div className="flex items-center justify-between pb-1">
             <h2 className="font-display text-lg font-bold text-white">Fleet Hangar (10 Units)</h2>
-            <span className="font-mono-tabular text-xs text-orange-400">
+            <span className="font-mono-tabular text-xs text-[#E5C158]">
               {profile.credits_rc.toLocaleString()} RC
             </span>
           </div>
@@ -179,8 +182,8 @@ export function GarageView({
                   }}
                   className={`w-full text-left p-3 rounded-md border transition-colors flex items-center justify-between gap-3 ${
                     isSelected
-                      ? 'bg-[#19202B] border-orange-500'
-                      : 'bg-[#11151C] border-[#212834] hover:border-[#344054]'
+                      ? 'bg-[#19202B] border-[#D4AF37]'
+                      : 'bg-[#11151C] border-[#212834] hover:border-[#94A3B8]/50'
                   }`}
                 >
                   <div className="min-w-0">
@@ -197,15 +200,27 @@ export function GarageView({
                   </div>
                   <div className="shrink-0 text-right font-mono-tabular text-xs">
                     {unitOwned ? (
-                      <span className="text-emerald-400 font-medium">
-                        {unitOwned.deployment_slot ? `Slot ${unitOwned.deployment_slot}` : 'Owned'}
-                      </span>
+                      <div>
+                        <div className="text-emerald-400 font-medium">
+                          {unitOwned.deployment_slot ? `Slot ${unitOwned.deployment_slot}` : 'Owned'}
+                        </div>
+                        <div className="text-[10px] text-[#CBD5E1]">
+                          {computeRobotChargeStatus(unitOwned).batteryPct.toFixed(0)}% ·{' '}
+                          {computeEffectiveRobotStats(entry.id, unitOwned, 'clear').effectiveChargeHours}h charge
+                        </div>
+                      </div>
                     ) : locked ? (
-                      <span className="text-[#7B8494] inline-flex items-center gap-1">
-                        <Lock size={11} /> Ch.{entry.unlockChapter}
-                      </span>
+                      <div>
+                        <span className="text-[#7B8494] inline-flex items-center gap-1">
+                          <Lock size={11} /> Ch.{entry.unlockChapter}
+                        </span>
+                        <div className="text-[10px] text-[#7B8494]">{entry.chargeHoursFull}h full</div>
+                      </div>
                     ) : (
-                      <span className="text-orange-400">{entry.priceRc} RC</span>
+                      <div>
+                        <span className="text-[#E5C158]">{entry.priceRc} RC</span>
+                        <div className="text-[10px] text-[#CBD5E1]">{entry.chargeHoursFull}h charge</div>
+                      </div>
                     )}
                   </div>
                 </button>
@@ -230,7 +245,7 @@ export function GarageView({
             <div className="md:col-span-6 flex flex-col justify-between space-y-4">
               <div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-medium text-orange-400 uppercase tracking-wider">
+                  <span className="text-xs font-medium text-[#E5C158] uppercase tracking-wider">
                     {selectedCatalog.locomotion.replace('_', ' ')} Chassis
                   </span>
                   {owned && (
@@ -248,7 +263,7 @@ export function GarageView({
                 <p className="text-xs text-sky-300 mt-2">{selectedCatalog.specialAbility}</p>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 text-xs font-mono-tabular">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono-tabular">
                 <div className="p-2 rounded bg-[#161B23] border border-[#222A36]">
                   <div className="text-[10px] text-[#9BA3B0]">Top Speed</div>
                   <div className="text-white font-semibold">{effectiveStats.speedMps} m/s</div>
@@ -261,7 +276,41 @@ export function GarageView({
                   <div className="text-[10px] text-[#9BA3B0]">Optics</div>
                   <div className="text-white font-semibold">{effectiveStats.cameraRangeM} m</div>
                 </div>
+                <div className="p-2 rounded bg-[#161B23] border border-[#222A36]">
+                  <div className="text-[10px] text-[#9BA3B0]">0→100% Charge</div>
+                  <div className="text-[#E5C158] font-semibold">
+                    {effectiveStats.effectiveChargeHours}h
+                  </div>
+                </div>
               </div>
+
+              {owned && (() => {
+                const charge = computeRobotChargeStatus(owned);
+                return (
+                  <div className="p-2.5 rounded bg-[#161B23] border border-[#222A36] flex items-center justify-between gap-3 text-xs font-mono-tabular">
+                    <div className="flex items-center gap-2">
+                      <BatteryCharging size={14} className="text-[#E5C158] shrink-0" />
+                      <span className="text-white font-semibold">
+                        Battery {charge.batteryPct.toFixed(1)}%
+                      </span>
+                      <span className="text-[#CBD5E1]">
+                        {charge.isCharging
+                          ? `· Recharging (${charge.formattedRemaining} left)`
+                          : '· Ready for Deployment'}
+                      </span>
+                    </div>
+                    {charge.isCharging && onOpenStore && (
+                      <button
+                        type="button"
+                        onClick={onOpenStore}
+                        className="px-2.5 py-1 rounded bg-[#D4AF37] hover:bg-[#E5C158] text-[#0B0D10] font-semibold text-[11px]"
+                      >
+                        Instant 100%
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Capability Matrix */}
               <div className="flex flex-wrap gap-1.5 text-[11px]">
@@ -291,7 +340,7 @@ export function GarageView({
                   type="button"
                   disabled={chapterLocked || !canAfford || busyAction !== null}
                   onClick={() => runAction('purchase', () => onPurchase(selectedId))}
-                  className="w-full py-2.5 px-4 text-xs font-semibold text-white bg-orange-600 hover:bg-orange-500 disabled:opacity-45 rounded transition-colors"
+                  className="w-full py-2.5 px-4 text-xs font-semibold text-[#0B0D10] bg-[#D4AF37] hover:bg-[#E2C04D] disabled:opacity-45 rounded transition-colors"
                 >
                   {chapterLocked
                     ? `Unlocks in Chapter ${selectedCatalog.unlockChapter}`
@@ -306,8 +355,8 @@ export function GarageView({
                     onClick={() => runAction('slot1', () => onDeploySlot(selectedId, 1))}
                     className={`flex-1 py-2 px-3 text-xs font-medium rounded border transition-colors ${
                       owned.deployment_slot === 1
-                        ? 'bg-orange-600 border-orange-400 text-white'
-                        : 'bg-[#161B23] border-[#293242] text-[#D1D5DB] hover:border-orange-500/60'
+                        ? 'bg-[#D4AF37] border-[#E5C158] text-[#0B0D10] font-semibold'
+                        : 'bg-[#161B23] border-[#293242] text-[#D1D5DB] hover:border-[#D4AF37]/60'
                     }`}
                   >
                     {owned.deployment_slot === 1 ? 'Active in Slot 1' : 'Assign Slot 1'}
@@ -346,7 +395,7 @@ export function GarageView({
               {/* Subsystem Upgrades */}
               <div className="rounded-lg bg-[#11151C] border border-[#222A36] p-4 space-y-3">
                 <div className="flex items-center gap-2 text-sm font-display font-semibold text-white">
-                  <Wrench size={15} className="text-orange-400" />
+                  <Wrench size={15} className="text-[#E5C158]" />
                   Subsystem Upgrades
                 </div>
                 <div className="space-y-2">
@@ -363,7 +412,7 @@ export function GarageView({
                         <div className="min-w-0">
                           <div className="font-medium text-white">
                             {spec.label}{' '}
-                            <span className="font-mono-tabular text-orange-400">Lv.{lvl}/3</span>
+                            <span className="font-mono-tabular text-[#E5C158]">Lv.{lvl}/3</span>
                           </div>
                           <div className="text-[11px] text-[#9BA3B0]">{spec.desc}</div>
                         </div>
@@ -371,7 +420,7 @@ export function GarageView({
                           type="button"
                           disabled={maxed || profile.credits_rc < cost || busyAction !== null}
                           onClick={() => runAction(`up_${cat}`, () => onUpgrade(selectedId, cat))}
-                          className="shrink-0 px-3 py-1.5 rounded bg-[#212936] hover:bg-orange-600 disabled:opacity-40 text-white font-mono-tabular transition-colors"
+                          className="shrink-0 px-3 py-1.5 rounded bg-[#212936] hover:bg-[#D4AF37] hover:text-[#0B0D10] disabled:opacity-40 text-white font-mono-tabular transition-colors"
                         >
                           {maxed ? 'Max' : `${cost} RC`}
                         </button>

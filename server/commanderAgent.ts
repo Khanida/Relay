@@ -78,6 +78,7 @@ const VALID_PRIORITIES: MissionPriority[] = ['low', 'normal', 'high', 'critical'
 
 export interface InterpretMissionOptions {
   preferOffline?: boolean;
+  useCloudAi?: boolean;
   regionId?: RegionId;
   fleetRobotIds?: string[];
   modifiers?: MissionDifficultyModifiers;
@@ -95,13 +96,15 @@ let geminiQuotaCooldownUntil = 0;
 export async function interpretMissionInstruction(
   instruction: string,
   missionId: string,
-  preferOfflineOrOpts: boolean | InterpretMissionOptions = false
+  preferOfflineOrOpts: boolean | InterpretMissionOptions = true
 ): Promise<{ plan: MissionPlan; warning?: string }> {
   const opts: InterpretMissionOptions =
     typeof preferOfflineOrOpts === 'boolean'
       ? { preferOffline: preferOfflineOrOpts }
       : preferOfflineOrOpts;
-  const preferOffline = Boolean(opts.preferOffline);
+  // Default to local zero-quota deterministic execution like a standalone game;
+  // Cloud AI is strictly opt-in via opts.useCloudAi === true.
+  const useLocalOnly = opts.preferOffline !== false && opts.useCloudAi !== true;
   const regionId: RegionId = opts.regionId ?? 'industrial_district';
   const fleetRobotIds = opts.fleetRobotIds?.length ? opts.fleetRobotIds : ['robot_001'];
 
@@ -121,9 +124,15 @@ export async function interpretMissionInstruction(
       chemicalCoord: regionMap.chemicalHazardCells[0],
     });
 
+  if (useLocalOnly) {
+    return {
+      plan: deterministicFallback(),
+    };
+  }
+
   const cacheKey = `${regionId}|${JSON.stringify(opts.modifiers ?? {})}|${fleetRobotIds.join(',')}|${cleanInstruction.toLowerCase()}`;
   const cached = GEMINI_PLAN_CACHE.get(cacheKey);
-  if (cached && !preferOffline) {
+  if (cached) {
     return {
       plan: {
         ...cached,
@@ -139,13 +148,10 @@ export async function interpretMissionInstruction(
   }
 
   const inQuotaCooldown = Date.now() < geminiQuotaCooldownUntil;
-  const ai = preferOffline || inQuotaCooldown ? null : getGeminiClient();
+  const ai = inQuotaCooldown ? null : getGeminiClient();
   if (!ai) {
     return {
       plan: deterministicFallback(),
-      warning: inQuotaCooldown
-        ? 'Cloud AI daily quota reached — running local deterministic Commander.'
-        : undefined,
     };
   }
 

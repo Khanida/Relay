@@ -8,6 +8,7 @@ import type {
   RegionMeta,
   RobotCatalogEntry,
   RobotModelId,
+  StoreItemDef,
   UpgradeCategory,
   WeatherType,
 } from './types';
@@ -23,7 +24,7 @@ export const MERIDIAN_REGIONS: Record<RegionId, RegionMeta> = {
     defaultWeather: 'cloudy',
     defaultTime: 'day',
     mapCoords: { xPct: 24, yPct: 58 },
-    ambientAccent: '#f97316',
+    ambientAccent: '#d4af37',
   },
   meridian_city: {
     id: 'meridian_city',
@@ -109,8 +110,8 @@ export const ROBOT_CATALOG: Record<RobotModelId, RobotCatalogEntry> = {
       'Standard articulated 4-leg rescue quadruped engineered for rubble stability, LiDAR mapping, and safe indoor extraction.',
     priceRc: 0,
     unlockChapter: 1,
-    primaryColor: '#ea580c',
-    accentColor: '#20252d',
+    primaryColor: '#d4af37',
+    accentColor: '#cbd5e1',
     baseStats: {
       speedMps: 2.15,
       batteryCapacity: 100,
@@ -130,6 +131,7 @@ export const ROBOT_CATALOG: Record<RobotModelId, RobotCatalogEntry> = {
       thermalSensor: true,
     },
     specialAbility: 'Balanced diagonal-trot stability over fractured concrete.',
+    chargeHoursFull: 24,
   },
   scout_x: {
     id: 'scout_x',
@@ -161,6 +163,7 @@ export const ROBOT_CATALOG: Record<RobotModelId, RobotCatalogEntry> = {
       thermalSensor: true,
     },
     specialAbility: '+45% top speed and extended long-range optical mast.',
+    chargeHoursFull: 16,
   },
   titan_r: {
     id: 'titan_r',
@@ -192,6 +195,7 @@ export const ROBOT_CATALOG: Record<RobotModelId, RobotCatalogEntry> = {
       thermalSensor: true,
     },
     specialAbility: 'Can breach & clear moderate rubble obstructions with front plow.',
+    chargeHoursFull: 12,
   },
   aqua_7: {
     id: 'aqua_7',
@@ -223,6 +227,7 @@ export const ROBOT_CATALOG: Record<RobotModelId, RobotCatalogEntry> = {
       thermalSensor: true,
     },
     specialAbility: 'Full floodwater submersion immunity and aquatic propulsion.',
+    chargeHoursFull: 14,
   },
   swift_drone: {
     id: 'swift_drone',
@@ -234,7 +239,7 @@ export const ROBOT_CATALOG: Record<RobotModelId, RobotCatalogEntry> = {
     priceRc: 1150,
     unlockChapter: 2,
     primaryColor: '#e2e8f0',
-    accentColor: '#f97316',
+    accentColor: '#d4af37',
     baseStats: {
       speedMps: 3.65,
       batteryCapacity: 95,
@@ -254,6 +259,7 @@ export const ROBOT_CATALOG: Record<RobotModelId, RobotCatalogEntry> = {
       thermalSensor: true,
     },
     specialAbility: 'Flies over rubble, floodwater, and low barriers effortlessly.',
+    chargeHoursFull: 10,
   },
   medic_4: {
     id: 'medic_4',
@@ -285,6 +291,7 @@ export const ROBOT_CATALOG: Record<RobotModelId, RobotCatalogEntry> = {
       thermalSensor: true,
     },
     specialAbility: 'Completes trauma supply deliveries and stabilizes civilian vitals.',
+    chargeHoursFull: 12,
   },
   spectra: {
     id: 'spectra',
@@ -316,6 +323,7 @@ export const ROBOT_CATALOG: Record<RobotModelId, RobotCatalogEntry> = {
       thermalSensor: true,
     },
     specialAbility: 'Chemical & EM shielding permits safe hazmat leak isolation.',
+    chargeHoursFull: 9,
   },
   crawler_9: {
     id: 'crawler_9',
@@ -347,6 +355,7 @@ export const ROBOT_CATALOG: Record<RobotModelId, RobotCatalogEntry> = {
       thermalSensor: true,
     },
     specialAbility: 'Low-drain chassis with exceptional narrow-gap maneuverability.',
+    chargeHoursFull: 15,
   },
   atlas_m: {
     id: 'atlas_m',
@@ -357,8 +366,8 @@ export const ROBOT_CATALOG: Record<RobotModelId, RobotCatalogEntry> = {
       'Dual-arm hydraulic rescue platform capable of lifting collapsed beams and clearing heavy landslide barricades.',
     priceRc: 1750,
     unlockChapter: 5,
-    primaryColor: '#f97316',
-    accentColor: '#1f2937',
+    primaryColor: '#d4af37',
+    accentColor: '#cbd5e1',
     baseStats: {
       speedMps: 2.0,
       batteryCapacity: 165,
@@ -378,6 +387,7 @@ export const ROBOT_CATALOG: Record<RobotModelId, RobotCatalogEntry> = {
       thermalSensor: true,
     },
     specialAbility: 'Dual robotic manipulators dismantle heavy structural collapses.',
+    chargeHoursFull: 8,
   },
   sentinel: {
     id: 'sentinel',
@@ -409,6 +419,7 @@ export const ROBOT_CATALOG: Record<RobotModelId, RobotCatalogEntry> = {
       thermalSensor: true,
     },
     specialAbility: 'Full multi-hazard hardening + wide-area fleet relay boost.',
+    chargeHoursFull: 4,
   },
 };
 
@@ -470,13 +481,68 @@ EQUIPMENT_CATALOG.comm_relay_kit.modifiers = {
 };
 
 export const UPGRADE_COSTS: Record<UpgradeCategory, { label: string; basePrice: number; desc: string }> = {
-  battery: { label: 'Solid-State Battery', basePrice: 220, desc: '-12% power drain per level' },
+  battery: { label: 'Solid-State Battery & Fast-Charge', basePrice: 220, desc: '-12% drain & up to 4x faster recharge speed' },
   speed: { label: 'Actuator Overdrive', basePrice: 240, desc: '+14% locomotion speed per level' },
   lidar: { label: 'LiDAR Optics', basePrice: 200, desc: '+1.2m depth range per level' },
   thermal: { label: 'Thermal Imaging', basePrice: 210, desc: '+1.0m survivor lock range per level' },
   weather_seal: { label: 'Environmental Sealing', basePrice: 180, desc: '+10% storm & hazard resilience' },
   armor: { label: 'Composite Plating', basePrice: 200, desc: 'Reduces structural impact wear' },
 };
+
+export const STORE_CATALOG: StoreItemDef[] = [
+  {
+    sku: 'battery_unit_full',
+    kind: 'battery',
+    title: 'Instant 100% Unit Recharge',
+    subtitle: 'Skip the 24h wait — immediately full-charge your active deployed robot.',
+    priceUsd: '0.99',
+    fullChargeScope: 'unit',
+    badge: 'Fast Charge',
+  },
+  {
+    sku: 'battery_fleet_full',
+    kind: 'battery',
+    title: 'Full Fleet 100% Overcharge',
+    subtitle: 'Instantly recharge every owned robot in your Meridian hangar to 100%.',
+    priceUsd: '1.99',
+    fullChargeScope: 'fleet',
+    badge: 'Best Value',
+  },
+  {
+    sku: 'rc_pack_1000',
+    kind: 'currency',
+    title: '1,000 RELAY Credits',
+    subtitle: 'Starter operational funding for subsystem upgrades and modules.',
+    priceUsd: '0.99',
+    creditsRc: 1000,
+  },
+  {
+    sku: 'rc_pack_3500',
+    kind: 'currency',
+    title: '3,500 RELAY Credits',
+    subtitle: 'Operations crate — enough for advanced rescue robotics and sealing.',
+    priceUsd: '2.99',
+    creditsRc: 3500,
+    badge: 'Popular',
+  },
+  {
+    sku: 'rc_pack_9000',
+    kind: 'currency',
+    title: '9,000 RELAY Credits',
+    subtitle: 'Commander vault for multi-unit heavy fleet expansion.',
+    priceUsd: '6.99',
+    creditsRc: 9000,
+  },
+  {
+    sku: 'rc_pack_25000',
+    kind: 'currency',
+    title: '25,000 RELAY Credits',
+    subtitle: 'Complete syndicate treasury — unlock and max out flagship SENTINEL.',
+    priceUsd: '14.99',
+    creditsRc: 25000,
+    badge: '+66% Bonus',
+  },
+];
 
 export const CAMPAIGN_MISSIONS: CampaignMissionDef[] = [
   // ================= LEVEL 1: INDUSTRIAL DISTRICT (3 MISSIONS) =================
@@ -1455,13 +1521,66 @@ export function computeEffectiveRobotStats(
   const effectiveSpeed = Math.max(1.2, base.baseStats.speedMps * speedMult * (1 - weatherSpeedPenalty));
   const capacityFactor = (base.baseStats.batteryCapacity + batteryBonus) / 100;
   const batteryDrainMultiplier = Number((1 / Math.max(0.6, capacityFactor)).toFixed(3));
+  const chargeSpeedMultipliers = [1.0, 1.5, 2.4, 4.0];
+  const chargeSpeedMult = chargeSpeedMultipliers[Math.min(3, Math.max(0, upgrades.battery ?? 0))] ?? 1.0;
+  const effectiveChargeHours = Number((base.chargeHoursFull / chargeSpeedMult).toFixed(2));
 
   return {
     speedMps: Number(effectiveSpeed.toFixed(2)),
     batteryDrainMultiplier,
+    effectiveChargeHours,
     lidarRangeM: Number(Math.max(4.0, base.baseStats.lidarRangeM + lidarBonus - weatherSensorPenalty * 0.5).toFixed(2)),
     cameraRangeM: Number(Math.max(3.5, base.baseStats.cameraRangeM + cameraBonus - weatherSensorPenalty).toFixed(2)),
     weatherResistance: Number(weatherRes.toFixed(2)),
     capabilities: caps,
   };
 }
+
+export interface RobotChargeStatus {
+  batteryPct: number;
+  isDepleted: boolean;
+  isCharging: boolean;
+  effectiveChargeHours: number;
+  ratePctPerHour: number;
+  secondsToFull: number;
+  formattedRemaining: string;
+}
+
+export function formatDurationCompact(totalSeconds: number): string {
+  const s = Math.max(0, Math.ceil(totalSeconds));
+  const hrs = Math.floor(s / 3600);
+  const mins = Math.floor((s % 3600) / 60);
+  const secs = s % 60;
+  if (hrs >= 1) {
+    return `${hrs}h ${String(mins).padStart(2, '0')}m`;
+  }
+  if (mins >= 1) {
+    return `${mins}m ${String(secs).padStart(2, '0')}s`;
+  }
+  return `${secs}s`;
+}
+
+export function computeRobotChargeStatus(
+  owned: OwnedRobotState,
+  nowMs = Date.now()
+): RobotChargeStatus {
+  const stats = computeEffectiveRobotStats(owned.robot_id, owned, 'clear');
+  const storedPct = Math.max(0, Math.min(100, owned.battery_pct ?? 100));
+  const updatedMs = owned.battery_updated_at ? Date.parse(owned.battery_updated_at) : nowMs;
+  const elapsedHours = Number.isFinite(updatedMs) ? Math.max(0, (nowMs - updatedMs) / 3600000) : 0;
+  const ratePctPerHour = 100 / Math.max(0.25, stats.effectiveChargeHours);
+  const currentPct = Number(Math.min(100, storedPct + elapsedHours * ratePctPerHour).toFixed(2));
+  const remainingPct = Math.max(0, 100 - currentPct);
+  const secondsToFull = remainingPct <= 0.01 ? 0 : Math.ceil((remainingPct / ratePctPerHour) * 3600);
+
+  return {
+    batteryPct: currentPct,
+    isDepleted: currentPct < 1,
+    isCharging: currentPct < 99.9,
+    effectiveChargeHours: stats.effectiveChargeHours,
+    ratePctPerHour: Number(ratePctPerHour.toFixed(2)),
+    secondsToFull,
+    formattedRemaining: secondsToFull <= 0 ? 'FULL' : formatDurationCompact(secondsToFull),
+  };
+}
+

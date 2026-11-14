@@ -34,20 +34,20 @@ export function MissionCompleteModal({
       <div className="w-full max-w-md rounded-lg bg-[#13171D] border border-[#28313E] p-6 space-y-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs text-orange-400 font-medium">
+            <p className="text-xs text-[#E5C158] font-medium">
               {campaignMission ? campaignMission.title : 'Operation First Light'}
             </p>
             <h2 className="mt-1 font-display text-2xl font-bold text-white">
               Mission Debrief
             </h2>
-            <p className="mt-1 text-xs text-[#9BA3B0]">
+            <p className="mt-1 text-xs text-[#CBD5E1]">
               {score.survivorFound ? 'Survivor located and reported' : 'Survivor not located'} ·{' '}
               {score.returnedSafely ? 'Unit docked safely' : 'Unit did not reach base'} ·{' '}
               <span className="font-mono-tabular">{score.elapsedSec.toFixed(1)}s</span>
             </p>
           </div>
           <div className="text-right">
-            <div className="text-3xl font-display font-bold text-orange-400 font-mono-tabular">
+            <div className="text-3xl font-display font-bold text-[#E5C158] font-mono-tabular">
               {score.grade}
             </div>
             <div className="text-xs font-mono-tabular text-[#9BA3B0]">
@@ -101,7 +101,7 @@ export function MissionCompleteModal({
           <button
             type="button"
             onClick={onReturnToBoard}
-            className="px-4 py-2 text-xs font-semibold text-white bg-orange-600 hover:bg-orange-500 rounded transition-colors"
+            className="px-4 py-2 text-xs font-semibold text-[#0B0D10] bg-[#D4AF37] hover:bg-[#E2C04D] rounded transition-colors"
           >
             Mission Board
           </button>

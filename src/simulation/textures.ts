@@ -154,7 +154,7 @@ export function createRobotOledTexture(): {
     ctx.fillStyle = '#070b10';
     ctx.fillRect(0, 0, 256, 128);
 
-    ctx.strokeStyle = '#f97316';
+    ctx.strokeStyle = '#d4af37';
     ctx.lineWidth = 3;
     ctx.strokeRect(4, 4, 248, 120);
 
@@ -172,7 +172,7 @@ export function createRobotOledTexture(): {
 
     ctx.fillStyle = '#1f2937';
     ctx.fillRect(16, 94, 224, 14);
-    ctx.fillStyle = batteryPct > 25 ? '#f97316' : '#ef4444';
+    ctx.fillStyle = batteryPct > 25 ? '#d4af37' : '#ef4444';
     ctx.fillRect(16, 94, Math.max(0, Math.min(224, (224 * batteryPct) / 100)), 14);
 
     texture.needsUpdate = true;

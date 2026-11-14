@@ -1,5 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
-import { Activity, RotateCcw, Zap } from 'lucide-react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
+import {
+  Activity,
+  BatteryCharging,
+  BatteryFull,
+  BatteryLow,
+  RotateCcw,
+  Zap,
+} from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -8,7 +15,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { gridToWorld } from '../shared/disasterMap';
-import type { ControlMode, GraphicsQuality } from '../shared/types';
+import { computeRobotChargeStatus } from '../shared/gameCatalog';
+import type { ControlMode, GraphicsQuality, OwnedRobotState } from '../shared/types';
 import { buildMeridianWorld3D } from '../simulation/meridianWorld3D';
 import type { MissionSimulationEngine } from '../simulation/missionEngine';
 import { createRobotModel, type RobotVisualHandle } from '../simulation/robotModels';
@@ -53,6 +61,9 @@ interface RelayViewportProps {
   showPerfOverlay?: boolean;
   autoOptimize?: boolean;
   onToggleAutoOptimize?: () => void;
+  rightOverlay?: ReactNode;
+  activeOwnedRobot?: OwnedRobotState;
+  onOpenStore?: () => void;
   onTickSync: () => void;
 }
 
@@ -73,6 +84,9 @@ export function RelayViewport({
   showPerfOverlay = true,
   autoOptimize = true,
   onToggleAutoOptimize,
+  rightOverlay,
+  activeOwnedRobot,
+  onOpenStore,
   onTickSync,
 }: RelayViewportProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -602,6 +616,58 @@ export function RelayViewport({
   }, [engine, worldVersion, graphicsQuality]);
 
   const activeUnitSnap = engine.getSnapshot();
+  const isMissionMoving = engine.phase === 'executing' || engine.phase === 'returning';
+  const chargeInfo =
+    activeOwnedRobot && !isMissionMoving ? computeRobotChargeStatus(activeOwnedRobot) : null;
+  const displayBatteryPct = chargeInfo ? chargeInfo.batteryPct : activeUnitSnap.batteryPct;
+  const isChargingInStandby = Boolean(chargeInfo && chargeInfo.isCharging);
+  const batteryFillColor =
+    displayBatteryPct > 45
+      ? 'bg-emerald-400'
+      : displayBatteryPct > 20
+        ? 'bg-[#E5C158]'
+        : 'bg-rose-500';
+  const batteryTextTone =
+    displayBatteryPct > 45
+      ? 'text-emerald-300'
+      : displayBatteryPct > 20
+        ? 'text-[#E5C158]'
+        : 'text-rose-400';
+
+  const BatteryCornerBadge = (
+    <div className="pointer-events-auto flex items-center gap-1.5 px-1.5 py-1 rounded bg-[#0B0D10]/90 border border-[#94A3B8]/40 text-[10px] font-mono-tabular">
+      {isChargingInStandby ? (
+        <BatteryCharging size={12} className="text-[#E5C158] shrink-0" />
+      ) : displayBatteryPct <= 20 ? (
+        <BatteryLow size={12} className="text-rose-400 shrink-0" />
+      ) : (
+        <BatteryFull size={12} className="text-emerald-400 shrink-0" />
+      )}
+      <div className="w-10 h-1.5 rounded-full bg-[#1E2531] overflow-hidden">
+        <div
+          className={`h-full transition-all ${batteryFillColor}`}
+          style={{ width: `${Math.max(0, Math.min(100, displayBatteryPct))}%` }}
+        />
+      </div>
+      <span className={`font-semibold ${batteryTextTone}`}>
+        {displayBatteryPct.toFixed(0)}%
+      </span>
+      {isChargingInStandby && chargeInfo && (
+        <span className="text-[#CBD5E1]">· {chargeInfo.formattedRemaining}</span>
+      )}
+      {displayBatteryPct < 99.9 && onOpenStore && (
+        <button
+          type="button"
+          onClick={onOpenStore}
+          title="Instant 100% Recharge in Store"
+          className="ml-0.5 px-1 py-0.5 rounded bg-[#D4AF37]/20 hover:bg-[#D4AF37] text-[#E5C158] hover:text-[#0B0D10] font-semibold transition-colors"
+        >
+          ⚡
+        </button>
+      )}
+    </div>
+  );
+
   const fpsTone =
     perf.fps >= 45
       ? 'text-emerald-400'
@@ -613,94 +679,105 @@ export function RelayViewport({
     <div className="relative w-full h-full bg-[#0B0D10] overflow-hidden">
       <div ref={containerRef} className="w-full h-full" />
 
-      {!swGlDetected && showFpvPip && cameraMode !== 'fpv' && (
+      {!swGlDetected && showFpvPip && cameraMode !== 'fpv' ? (
         <div
-          className="pointer-events-none absolute top-4 left-4 border border-[#2d3644] rounded-md overflow-hidden"
+          className="pointer-events-none absolute top-4 left-4 border border-[#94A3B8]/40 rounded-md overflow-hidden"
           style={{ width: 'min(230px, 24%)', aspectRatio: '16 / 10' }}
         >
+          <div className="absolute top-1.5 left-1.5 z-10">{BatteryCornerBadge}</div>
           <div className="absolute inset-x-0 bottom-0 bg-[#0b0d10]/85 px-2 py-1 flex items-center justify-between text-[11px] font-mono-tabular text-[#d1d5db]">
             <span>{activeUnitSnap.name ?? activeUnitSnap.robot_id} FPV</span>
             <span>{engine.survivorFound ? 'Target Locked' : 'Scanning'}</span>
           </div>
         </div>
+      ) : (
+        <div className="pointer-events-none absolute top-4 left-4 z-10 flex items-center gap-2">
+          {BatteryCornerBadge}
+        </div>
       )}
 
-      {showPerfOverlay && (
-        <div className="absolute top-16 right-4 z-20 w-60 rounded-lg bg-[#12161C]/95 border border-[#28313E] p-2.5 text-[11px] text-[#D1D5DB]">
-          <div className="flex items-center justify-between gap-2 pb-1.5 mb-2 border-b border-[#222934]">
-            <span className="inline-flex items-center gap-1.5 font-semibold text-white tracking-wide uppercase text-[10px]">
-              <Activity size={12} className="text-sky-400" />
-              Perf Monitor
-            </span>
-            {onToggleAutoOptimize && (
-              <button
-                type="button"
-                onClick={onToggleAutoOptimize}
-                title="Automatically scale resolution & particle density if FPS drops below 30"
-                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-medium transition-colors ${
-                  autoOptimize
-                    ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300'
-                    : 'bg-[#1A2029] border-[#2C3544] text-[#9BA3B0] hover:text-white'
-                }`}
-              >
-                <Zap size={10} />
-                Auto-Opt: {autoOptimize ? 'ON' : 'OFF'}
-              </button>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1 font-mono-tabular">
-            <div className="flex items-center justify-between">
-              <span className="text-[#9BA3B0]">FPS</span>
-              <span className={`font-semibold ${fpsTone}`}>{perf.fps}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[#9BA3B0]">Frame</span>
-              <span>{perf.frameTimeMs.toFixed(1)}ms</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[#9BA3B0]">Res</span>
-              <span>{Math.round(perf.resScale * 100)}%</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[#9BA3B0]">Particles</span>
-              <span>{Math.round(perf.particleDensity * 100)}%</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[#9BA3B0]">Buffer</span>
-              <span>
-                {perf.renderWidth}×{perf.renderHeight}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[#9BA3B0]">Draws</span>
-              <span>{perf.drawCalls}</span>
-            </div>
-          </div>
-
-          {(perf.tier > 0 || (autoOptimize && perf.lowFpsStreak > 0)) && (
-            <div className="mt-2 pt-1.5 border-t border-[#222934] flex items-center justify-between gap-2 text-[10px]">
-              {perf.tier > 0 ? (
-                <>
-                  <span className="text-amber-300 font-medium">
-                    Auto-Optimized · {OPT_TIERS[perf.tier].label}
-                  </span>
+      {(showPerfOverlay || rightOverlay) && (
+        <div className="pointer-events-none absolute top-16 right-4 z-20 flex flex-col items-end gap-2 max-h-[calc(100%-8.5rem)]">
+          {showPerfOverlay && (
+            <div className="pointer-events-auto w-72 rounded-lg bg-[#12161C]/95 border border-[#94A3B8]/35 p-2.5 text-[11px] text-[#D1D5DB]">
+              <div className="flex items-center justify-between gap-2 pb-1.5 mb-2 border-b border-[#222934]">
+                <span className="inline-flex items-center gap-1.5 font-semibold text-[#E5C158] tracking-wide uppercase text-[10px]">
+                  <Activity size={12} className="text-[#CBD5E1]" />
+                  Perf Monitor
+                </span>
+                {onToggleAutoOptimize && (
                   <button
                     type="button"
-                    onClick={() => applyTierFnRef.current?.(0)}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#1A2029] hover:bg-[#232B38] border border-[#2C3544] text-[#E5E7EB]"
+                    onClick={onToggleAutoOptimize}
+                    title="Automatically scale resolution & particle density if FPS drops below 30"
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-medium transition-colors ${
+                      autoOptimize
+                        ? 'bg-[#D4AF37]/15 border-[#D4AF37]/50 text-[#E5C158]'
+                        : 'bg-[#1A2029] border-[#2C3544] text-[#CBD5E1] hover:text-white'
+                    }`}
                   >
-                    <RotateCcw size={10} />
-                    100%
+                    <Zap size={10} />
+                    Auto-Opt: {autoOptimize ? 'ON' : 'OFF'}
                   </button>
-                </>
-              ) : (
-                <span className="text-amber-300 font-mono-tabular">
-                  FPS &lt; 30 ({perf.lowFpsStreak}/4) — scaling soon
-                </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 font-mono-tabular">
+                <div className="flex items-center justify-between">
+                  <span className="text-[#9BA3B0]">FPS</span>
+                  <span className={`font-semibold ${fpsTone}`}>{perf.fps}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[#9BA3B0]">Frame</span>
+                  <span>{perf.frameTimeMs.toFixed(1)}ms</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[#9BA3B0]">Res</span>
+                  <span>{Math.round(perf.resScale * 100)}%</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[#9BA3B0]">Particles</span>
+                  <span>{Math.round(perf.particleDensity * 100)}%</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[#9BA3B0]">Buffer</span>
+                  <span>
+                    {perf.renderWidth}×{perf.renderHeight}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[#9BA3B0]">Draws</span>
+                  <span>{perf.drawCalls}</span>
+                </div>
+              </div>
+
+              {(perf.tier > 0 || (autoOptimize && perf.lowFpsStreak > 0)) && (
+                <div className="mt-2 pt-1.5 border-t border-[#222934] flex items-center justify-between gap-2 text-[10px]">
+                  {perf.tier > 0 ? (
+                    <>
+                      <span className="text-[#E5C158] font-medium">
+                        Auto-Optimized · {OPT_TIERS[perf.tier].label}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => applyTierFnRef.current?.(0)}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#1A2029] hover:bg-[#232B38] border border-[#94A3B8]/40 text-[#E5E7EB]"
+                      >
+                        <RotateCcw size={10} />
+                        100%
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-[#E5C158] font-mono-tabular">
+                      FPS &lt; 30 ({perf.lowFpsStreak}/4) — scaling soon
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           )}
+
+          {rightOverlay}
         </div>
       )}
 

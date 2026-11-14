@@ -2,5 +2,7 @@
   "name": "RELAY — Autonomous Rescue Robotics Simulation",
   "description": "3D autonomous quadruped rescue robotics simulation with natural-language Commander AI, A* navigation, deterministic safety validation, and simulated sensors.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

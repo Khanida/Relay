@@ -16,16 +16,18 @@ import {
   listSaveSlots,
   listTransactions,
   loadSaveSlot,
+  processStorePurchase,
   purchaseRobot,
   recordTransaction,
   repairOwnedRobot,
   resetNewGame,
   setRobotDeploymentSlot,
   updatePlayerProfile,
+  updateRobotBattery,
   upgradeOwnedRobot,
   upsertMissionRecord,
 } from './server/db';
-import { CAMPAIGN_MISSIONS, MERIDIAN_REGIONS } from './src/shared/gameCatalog';
+import { CAMPAIGN_MISSIONS, MERIDIAN_REGIONS, STORE_CATALOG } from './src/shared/gameCatalog';
 import type {
   AgentEvent,
   EquipmentModuleId,
@@ -33,6 +35,7 @@ import type {
   PlayerSettings,
   RegionId,
   RobotModelId,
+  StoreSku,
   UpgradeCategory,
 } from './src/shared/types';
 
@@ -160,6 +163,48 @@ async function startServer() {
       res.json({ ...result, transactions: listTransactions(30) });
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : 'Repair failed.' });
+    }
+  });
+
+  app.post('/api/garage/battery', (req, res) => {
+    try {
+      const updates = Array.isArray(req.body?.updates)
+        ? (req.body.updates as Array<{ robotId?: string; batteryPct?: number }>)
+        : [
+            {
+              robotId: typeof req.body?.robotId === 'string' ? req.body.robotId : undefined,
+              batteryPct: typeof req.body?.batteryPct === 'number' ? req.body.batteryPct : undefined,
+            },
+          ];
+      let robots = listOwnedRobots();
+      for (const u of updates) {
+        if (u.robotId && typeof u.batteryPct === 'number' && Number.isFinite(u.batteryPct)) {
+          robots = updateRobotBattery(u.robotId as RobotModelId, u.batteryPct);
+        }
+      }
+      res.json({ robots });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to update battery.' });
+    }
+  });
+
+  app.get('/api/store/catalog', (_req, res) => {
+    res.json({ items: STORE_CATALOG });
+  });
+
+  app.post('/api/store/purchase', (req, res) => {
+    try {
+      const sku = String(req.body?.sku || '') as StoreSku;
+      const targetRobotId =
+        typeof req.body?.targetRobotId === 'string'
+          ? (req.body.targetRobotId as RobotModelId)
+          : undefined;
+      const paymentMode =
+        req.body?.paymentMethod === 'google_pay' ? 'Google Pay' : 'Sandbox Demo';
+      const result = processStorePurchase(sku, targetRobotId, paymentMode);
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Store purchase failed.' });
     }
   });
 
@@ -294,7 +339,8 @@ async function startServer() {
       }
 
       const result = await interpretMissionInstruction(instruction, missionId, {
-        preferOffline,
+        preferOffline: req.body?.useCloudAi ? false : true,
+        useCloudAi: Boolean(req.body?.useCloudAi),
         regionId,
         fleetRobotIds,
         modifiers,

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { interpretMissionInstruction } from '../server/commanderAgent';
 import {
   createSaveSlot,
   deleteSaveSlot,
@@ -7,11 +8,13 @@ import {
   getPlayerProfile,
   listOwnedRobots,
   loadSaveSlot,
+  processStorePurchase,
   purchaseRobot,
   recordTransaction,
   resetNewGame,
   setRobotDeploymentSlot,
   updatePlayerProfile,
+  updateRobotBattery,
   upgradeOwnedRobot,
 } from '../server/db';
 import { coordinateFleetAssignments } from '../src/agents/fleetCoordinator';
@@ -23,6 +26,7 @@ import {
   MERIDIAN_REGIONS,
   ROBOT_CATALOG,
   computeEffectiveRobotStats,
+  computeRobotChargeStatus,
 } from '../src/shared/gameCatalog';
 import { createRegionWorldMap } from '../src/shared/meridianWorldMaps';
 import type { RegionId } from '../src/shared/types';
@@ -297,4 +301,62 @@ test('Control mode defaults to Automatic AI and Remote Control enables manual ke
   engine.setControlMode('auto');
   assert.equal(engine.manualInput.forward, 0);
   assert.equal(engine.manualInput.turn, 0);
+});
+
+test('Zero-quota Commander executes locally without Cloud AI warnings, and 24h recharge + Store work end-to-end', async () => {
+  const res = await interpretMissionInstruction('Find the survivor and return safely.', 'm_local_1');
+  assert.equal(res.plan.provider, 'deterministic-fallback');
+  assert.equal(res.warning, undefined);
+  assert.ok(res.plan.objectives.length >= 3);
+
+  // Baseline RELAY-01 = 24h full charge; Battery Lv.3 = 6h full charge; SENTINEL = 4h full charge
+  assert.equal(computeEffectiveRobotStats('relay_01').effectiveChargeHours, 24);
+  assert.equal(
+    computeEffectiveRobotStats('relay_01', {
+      robot_id: 'relay_01',
+      custom_name: 'RELAY-01',
+      hull_color: '#d4af37',
+      integrity_pct: 100,
+      upgrades: { battery: 3, speed: 0, lidar: 0, thermal: 0, weather_seal: 0, armor: 0 },
+      equipped_modules: [],
+      deployment_slot: 1,
+      purchased_at: new Date().toISOString(),
+    }).effectiveChargeHours,
+    6
+  );
+  assert.equal(computeEffectiveRobotStats('sentinel').effectiveChargeHours, 4);
+
+  // Simulate 12 hours elapsed from 0% battery on un-upgraded RELAY-01 => ~50%
+  const twelveHoursAgo = new Date(Date.now() - 12 * 3600 * 1000).toISOString();
+  const halfCharge = computeRobotChargeStatus({
+    robot_id: 'relay_01',
+    custom_name: 'RELAY-01',
+    hull_color: '#d4af37',
+    integrity_pct: 100,
+    battery_pct: 0,
+    battery_updated_at: twelveHoursAgo,
+    upgrades: { battery: 0, speed: 0, lidar: 0, thermal: 0, weather_seal: 0, armor: 0 },
+    equipped_modules: [],
+    deployment_slot: 1,
+    purchased_at: twelveHoursAgo,
+  });
+  assert.ok(halfCharge.batteryPct >= 49.9 && halfCharge.batteryPct <= 50.1);
+
+  // Depleted unit cannot run missions until recharged
+  resetNewGame();
+  updateRobotBattery('relay_01', 0);
+  const drainedFleet = listOwnedRobots();
+  assert.equal(drainedFleet[0].battery_pct, 0);
+
+  const drainedEngine = new MissionSimulationEngine({}, { deployedRobots: drainedFleet });
+  drainedEngine.startFromInstruction('Find the survivor and return safely.');
+  assert.equal(drainedEngine.phase, 'failed');
+
+  // Store purchase grants RC pack & instant 100% battery recharge
+  const rcBuy = processStorePurchase('rc_pack_1000', 'relay_01', 'sandbox');
+  assert.equal(rcBuy.profile.credits_rc, 1300);
+
+  const batBuy = processStorePurchase('battery_unit_full', 'relay_01', 'sandbox');
+  assert.equal(batBuy.robots.find((r) => r.robot_id === 'relay_01')?.battery_pct, 100);
+  resetNewGame();
 });

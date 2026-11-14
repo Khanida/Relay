@@ -43,7 +43,7 @@ export function SettingsModal({
         {/* Visual, Simulation & Audio Settings */}
         <div className="rounded-lg bg-[#11151C] border border-[#222A36] p-5 space-y-5">
           <div className="flex items-center gap-2 border-b border-[#1E2531] pb-3">
-            <Sliders size={16} className="text-orange-400" />
+            <Sliders size={16} className="text-[#E5C158]" />
             <h2 className="font-display text-lg font-bold text-white">Graphics &amp; Simulation</h2>
           </div>
 
@@ -58,8 +58,8 @@ export function SettingsModal({
                     onClick={() => onUpdateSettings({ graphicsQuality: q })}
                     className={`py-2 rounded border capitalize font-medium transition-colors ${
                       settings.graphicsQuality === q
-                        ? 'bg-orange-600 border-orange-500 text-white'
-                        : 'bg-[#161B23] border-[#252E3C] text-[#9BA3B0] hover:text-white'
+                        ? 'bg-[#D4AF37] border-[#E5C158] text-[#0B0D10] font-semibold'
+                        : 'bg-[#161B23] border-[#252E3C] text-[#CBD5E1] hover:text-white'
                     }`}
                   >
                     {q}
@@ -92,7 +92,7 @@ export function SettingsModal({
                   type="checkbox"
                   checked={Boolean(settings[key])}
                   onChange={(e) => onUpdateSettings({ [key]: e.target.checked })}
-                  className="w-4 h-4 accent-orange-500"
+                  className="w-4 h-4 accent-[#D4AF37]"
                 />
               </label>
             ))}
@@ -140,7 +140,7 @@ export function SettingsModal({
                   await onSaveSlot(id, slotLabel || 'Manual Save');
                   notify('Saved current fleet and campaign progress.');
                 }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white rounded"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-[#D4AF37] hover:bg-[#E2C04D] text-[#0B0D10] rounded"
               >
                 <Save size={13} /> Save Game
               </button>
@@ -183,7 +183,7 @@ export function SettingsModal({
               <h3 className="font-display text-sm font-semibold text-white">
                 RELAY Credits Transaction Ledger
               </h3>
-              <span className="font-mono-tabular text-xs text-orange-400">
+              <span className="font-mono-tabular text-xs text-[#E5C158]">
                 Balance: {profile.credits_rc.toLocaleString()} RC
               </span>
             </div>

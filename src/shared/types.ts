@@ -344,6 +344,7 @@ export interface RobotCatalogEntry {
   };
   capabilities: RobotCapabilities;
   specialAbility: string;
+  chargeHoursFull: number; // baseline hours to recharge 0% -> 100%
 }
 
 export interface OwnedRobotState {
@@ -351,6 +352,8 @@ export interface OwnedRobotState {
   custom_name: string;
   hull_color: string;
   integrity_pct: number;
+  battery_pct?: number;
+  battery_updated_at?: string;
   upgrades: Record<UpgradeCategory, number>; // level 0..3
   equipped_modules: EquipmentModuleId[];
   deployment_slot: 1 | 2 | null;
@@ -360,6 +363,7 @@ export interface OwnedRobotState {
 export interface EffectiveRobotStats {
   speedMps: number;
   batteryDrainMultiplier: number;
+  effectiveChargeHours: number;
   lidarRangeM: number;
   cameraRangeM: number;
   weatherResistance: number;
@@ -431,11 +435,38 @@ export interface CampaignMissionDef {
   hasEthicalChoice?: boolean;
 }
 
+export type StoreSku =
+  | 'rc_pack_1000'
+  | 'rc_pack_3500'
+  | 'rc_pack_9000'
+  | 'rc_pack_25000'
+  | 'battery_unit_full'
+  | 'battery_fleet_full';
+
+export interface StoreItemDef {
+  sku: StoreSku;
+  kind: 'currency' | 'battery';
+  title: string;
+  subtitle: string;
+  priceUsd: string;
+  creditsRc?: number;
+  fullChargeScope?: 'unit' | 'fleet';
+  badge?: string;
+}
+
 export interface EconomyTransaction {
   id: string;
   amount_rc: number; // positive = earn, negative = spend
   balance_after: number;
-  category: 'mission_reward' | 'robot_purchase' | 'upgrade' | 'equipment' | 'repair' | 'bonus';
+  category:
+    | 'mission_reward'
+    | 'robot_purchase'
+    | 'upgrade'
+    | 'equipment'
+    | 'repair'
+    | 'bonus'
+    | 'store_purchase'
+    | 'recharge';
   description: string;
   created_at: string;
 }

@@ -41,13 +41,13 @@ export function StoryBriefingModal({
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
         <div className="w-full max-w-2xl rounded-lg bg-[#11151C] border border-[#2B3544] p-6 space-y-5">
           <div>
-            <p className="text-xs font-medium text-orange-400">
+            <p className="text-xs font-medium text-[#E5C158]">
               Operation Ashfall — Final Decision
             </p>
             <h2 className="font-display text-2xl font-bold text-white mt-1">
               The Future of Meridian&apos;s Autonomous Grid
             </h2>
-            <p className="mt-2 text-xs text-[#9BA3B0] leading-relaxed">
+            <p className="mt-2 text-xs text-[#CBD5E1] leading-relaxed">
               With the Research Valley staff rescued and ARIA-Net isolated, the Meridian Council awaits
               RELAY Response&apos;s architectural verdict on how autonomous infrastructure must operate.
             </p>
@@ -57,7 +57,7 @@ export function StoryBriefingModal({
             <button
               type="button"
               onClick={() => onResolveChoice?.('human_oversight')}
-              className="text-left p-4 rounded-md bg-[#161B23] hover:bg-[#1E2531] border border-[#2C3748] hover:border-orange-500 transition-colors space-y-2"
+              className="text-left p-4 rounded-md bg-[#161B23] hover:bg-[#1E2531] border border-[#2C3748] hover:border-[#D4AF37] transition-colors space-y-2"
             >
               <div className="font-display font-semibold text-white">
                 Mandate Human Oversight Protocol
@@ -92,13 +92,13 @@ export function StoryBriefingModal({
       <div className="w-full max-w-2xl rounded-lg bg-[#11151C] border border-[#2B3544] p-6 space-y-5">
         <div className="flex items-start justify-between gap-4 border-b border-[#202733] pb-4">
           <div>
-            <p className="text-xs font-medium text-orange-400">
+            <p className="text-xs font-medium text-[#E5C158]">
               {region.name} · {mission.weather.replace('_', ' ').toUpperCase()} ({mission.timeOfDay.toUpperCase()})
             </p>
             <h2 className="font-display text-2xl font-bold text-white mt-1">{mission.title}</h2>
           </div>
           {voiceEnabled && (
-            <span className="inline-flex items-center gap-1.5 text-[11px] text-sky-400">
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-[#CBD5E1]">
               <Volume2 size={14} /> Voice Active
             </span>
           )}
@@ -108,7 +108,7 @@ export function StoryBriefingModal({
           {mission.briefingDialogue.map((line, i) => (
             <div key={i} className="p-3.5 rounded bg-[#161B23] border border-[#232B38] space-y-1">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-orange-400">{line.speaker}</span>
+                <span className="font-semibold text-[#E5C158]">{line.speaker}</span>
                 <span className="text-[#7B8494]">{line.role}</span>
               </div>
               <p className="text-xs text-[#E5E7EB] leading-relaxed">&ldquo;{line.text}&rdquo;</p>
@@ -137,7 +137,7 @@ export function StoryBriefingModal({
           <button
             type="button"
             onClick={onStartMission}
-            className="inline-flex items-center gap-2 px-5 py-2 text-xs font-semibold text-white bg-orange-600 hover:bg-orange-500 rounded transition-colors"
+            className="inline-flex items-center gap-2 px-5 py-2 text-xs font-semibold text-[#0B0D10] bg-[#D4AF37] hover:bg-[#E2C04D] rounded transition-colors"
           >
             <Play size={14} />
             Deploy Fleet &amp; Launch

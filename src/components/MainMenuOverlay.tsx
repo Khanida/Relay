@@ -30,7 +30,7 @@ export function MainMenuOverlay({
         className="pointer-events-none fixed inset-0 opacity-20"
         style={{
           backgroundImage:
-            'radial-gradient(circle at 72% 28%, rgba(249,115,22,0.18), transparent 45%), linear-gradient(to right, #1b222d 1px, transparent 1px), linear-gradient(to bottom, #1b222d 1px, transparent 1px)',
+            'radial-gradient(circle at 72% 28%, rgba(212,175,55,0.16), transparent 45%), linear-gradient(to right, #1b222d 1px, transparent 1px), linear-gradient(to bottom, #1b222d 1px, transparent 1px)',
           backgroundSize: '100% 100%, 48px 48px, 48px 48px',
         }}
       />
@@ -43,8 +43,8 @@ export function MainMenuOverlay({
           </p>
         </div>
         <div className="text-right font-mono-tabular text-xs">
-          <div className="text-orange-400 font-semibold">{profile.credits_rc.toLocaleString()} RC</div>
-          <div className="text-[#9BA3B0]">
+          <div className="text-[#E5C158] font-semibold">{profile.credits_rc.toLocaleString()} RC</div>
+          <div className="text-[#CBD5E1]">
             Chapter {profile.current_chapter} / 6 · {ownedCount} / 10 Units
           </div>
         </div>
@@ -53,7 +53,7 @@ export function MainMenuOverlay({
       <main className="relative z-10 max-w-6xl w-full mx-auto my-auto py-10 grid lg:grid-cols-12 gap-10 items-center">
         <div className="lg:col-span-7 space-y-6">
           <div className="space-y-3">
-            <p className="text-xs font-medium uppercase tracking-widest text-orange-400">
+            <p className="text-xs font-medium uppercase tracking-widest text-[#E5C158]">
               Open-World Autonomous Robotics Simulation
             </p>
             <h1 className="font-display text-4xl md:text-6xl font-bold tracking-tight text-white leading-[1.06]">
@@ -70,7 +70,7 @@ export function MainMenuOverlay({
             <button
               type="button"
               onClick={onContinue}
-              className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-orange-600 hover:bg-orange-500 rounded-md transition-colors"
+              className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-[#0B0D10] bg-[#D4AF37] hover:bg-[#E2C04D] rounded-md transition-colors"
             >
               {hasExistingProgress ? 'Continue Operations' : 'Enter Field Operations'}
               <ArrowRight size={16} />
@@ -112,7 +112,7 @@ export function MainMenuOverlay({
             onClick={() => onNavigate('garage')}
             className="text-left p-5 rounded-lg bg-[#12161D] hover:bg-[#181E27] border border-[#232B38] transition-colors space-y-2"
           >
-            <Cpu size={20} className="text-orange-400" />
+            <Cpu size={20} className="text-[#E5C158]" />
             <div className="font-display font-semibold text-base text-white">Robotics Garage</div>
             <p className="text-xs text-[#9BA3B0]">
               Acquire 10 specialized chassis, install equipment modules, and configure Dual-Fleet slots.
