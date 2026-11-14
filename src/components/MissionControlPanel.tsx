@@ -10,6 +10,8 @@ import type {
   MissionRecord,
   RobotStateSnapshot,
   SensorReading,
+  TimeOfDay,
+  WeatherType,
 } from '../shared/types';
 import { BeliefMapCanvas } from './BeliefMapCanvas';
 
@@ -20,12 +22,19 @@ interface MissionControlPanelProps {
   onTabChange: (tab: PanelTab) => void;
   phase: MissionPhase;
   plan: MissionPlan | null;
-  robot: RobotStateSnapshot;
+  units: RobotStateSnapshot[];
+  selectedUnitIndex: number;
+  onSelectUnit: (index: number) => void;
   sensors: SensorReading;
   beliefGrid: CellType[][];
+  baseCoord: GridCoord;
+  survivorCoord: GridCoord;
+  relayCoord?: GridCoord;
   activeWaypoints: GridCoord[];
   elapsedSec: number;
   survivorFound: boolean;
+  weather: WeatherType;
+  timeOfDay: TimeOfDay;
   events: AgentEvent[];
   missionHistory: MissionRecord[];
   onRefreshHistory: () => void;
@@ -37,6 +46,8 @@ const ACTOR_COLORS: Record<AgentActor, string> = {
   SAFETY: 'text-rose-400',
   ROBOT: 'text-emerald-400',
   PERCEPTION: 'text-amber-300',
+  FLEET: 'text-indigo-400',
+  LOGISTICS: 'text-cyan-400',
 };
 
 export function MissionControlPanel({
@@ -44,12 +55,19 @@ export function MissionControlPanel({
   onTabChange,
   phase,
   plan,
-  robot,
+  units,
+  selectedUnitIndex,
+  onSelectUnit,
   sensors,
   beliefGrid,
+  baseCoord,
+  survivorCoord,
+  relayCoord,
   activeWaypoints,
   elapsedSec,
   survivorFound,
+  weather,
+  timeOfDay,
   events,
   missionHistory,
   onRefreshHistory,
@@ -57,15 +75,14 @@ export function MissionControlPanel({
   const [actorFilter, setActorFilter] = useState<'ALL' | AgentActor>('ALL');
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
 
+  const robot = units[selectedUnitIndex] ?? units[0];
   const filteredEvents =
     actorFilter === 'ALL' ? events : events.filter((e) => e.actor === actorFilter);
-
   const headingDeg = Math.round(((robot.headingRad * 180) / Math.PI + 360) % 360);
 
   return (
     <aside className="w-full lg:w-[396px] shrink-0 h-full bg-[#11151B] border-l border-[#212834] flex flex-col overflow-hidden">
-      {/* Segmented Panel Navigation */}
-      <div className="px-4 pt-3 pb-2 border-b border-[#212834]">
+      <div className="px-4 pt-3 pb-2 border-b border-[#212834] space-y-2">
         <div className="grid grid-cols-4 gap-1 p-1 rounded-md bg-[#0B0D10] border border-[#1E242E]">
           {(
             [
@@ -92,20 +109,41 @@ export function MissionControlPanel({
             </button>
           ))}
         </div>
+
+        {/* Multi-Robot Switcher when 2 units deployed */}
+        {units.length > 1 && (
+          <div className="grid grid-cols-2 gap-1.5">
+            {units.map((u, idx) => (
+              <button
+                key={u.robot_id}
+                type="button"
+                onClick={() => onSelectUnit(idx)}
+                className={`px-2.5 py-1.5 rounded text-xs font-medium border text-left transition-colors ${
+                  idx === selectedUnitIndex
+                    ? 'bg-[#1B222D] border-orange-500 text-white'
+                    : 'bg-[#0D1015] border-[#1F2630] text-[#9BA3B0] hover:text-white'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="truncate">{u.name ?? u.robot_id}</span>
+                  <span className="font-mono-tabular text-[11px]">{u.batteryPct.toFixed(0)}%</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Scrollable Content Body */}
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
         {activeTab === 'overview' && (
           <>
-            {/* Robot Telemetry Summary */}
             <section className="space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="font-display text-sm font-semibold tracking-wide text-[#F2F4F7]">
-                  Unit Telemetry
+                  Unit Telemetry · {robot.name ?? robot.robot_id}
                 </h2>
                 <span className="text-xs font-mono-tabular text-[#9BA3B0]">
-                  {robot.robot_id} · {phase.toUpperCase()}
+                  {phase.toUpperCase()}
                 </span>
               </div>
 
@@ -125,7 +163,7 @@ export function MissionControlPanel({
                       {robot.batteryPct.toFixed(1)}%
                     </span>
                     <span className="text-[11px] text-[#9BA3B0]">
-                      {robot.batteryPct <= 22 ? 'Low Reserve' : 'Nominal'}
+                      Hull {(robot.integrityPct ?? 100).toFixed(0)}%
                     </span>
                   </div>
                   <div className="mt-2 h-1.5 w-full rounded-full bg-[#0B0D10] overflow-hidden">
@@ -143,17 +181,13 @@ export function MissionControlPanel({
                 </div>
 
                 <div className="p-3 rounded bg-[#161B23] border border-[#222A36]">
-                  <div className="text-[11px] text-[#9BA3B0]">Survivors Located</div>
+                  <div className="text-[11px] text-[#9BA3B0]">Survivors &amp; Weather</div>
                   <div className="mt-1 flex items-baseline justify-between">
                     <span className="text-lg font-semibold font-mono-tabular text-white">
                       {survivorFound ? '1 / 1' : '0 / 1'}
                     </span>
-                    <span
-                      className={`text-[11px] font-medium ${
-                        survivorFound ? 'text-emerald-400' : 'text-[#9BA3B0]'
-                      }`}
-                    >
-                      {survivorFound ? 'Verified' : 'Searching'}
+                    <span className="text-[11px] capitalize text-sky-400">
+                      {weather.replace('_', ' ')} · {timeOfDay}
                     </span>
                   </div>
                   <div className="mt-2 text-[11px] font-mono-tabular text-[#9BA3B0]">
@@ -198,7 +232,6 @@ export function MissionControlPanel({
               </div>
             </section>
 
-            {/* Commander Interpretation & Objectives */}
             <section className="space-y-3 pt-2 border-t border-[#212834]">
               <div className="flex items-center justify-between">
                 <h2 className="font-display text-sm font-semibold tracking-wide text-[#F2F4F7]">
@@ -213,8 +246,8 @@ export function MissionControlPanel({
 
               {!plan ? (
                 <div className="p-3.5 rounded bg-[#161B23] border border-[#222A36] text-xs text-[#9BA3B0] leading-relaxed">
-                  Operation First Light ready. Enter a natural-language instruction below or choose a
-                  mission preset such as &ldquo;Find the survivor and return safely.&rdquo;
+                  Fleet staged at Launch Bay. Enter a natural-language instruction below, choose a
+                  mission preset, or use W/A/S/D for manual safety-guarded exploration.
                 </div>
               ) : (
                 <div className="space-y-2.5">
@@ -234,7 +267,7 @@ export function MissionControlPanel({
                             {idx + 1}. {obj.label}
                           </div>
                           <div className="mt-0.5 text-[11px] font-mono-tabular text-[#9BA3B0]">
-                            Target ({obj.target.x}, {obj.target.z}) · Priority {obj.priority}
+                            {obj.robot_id} · ({obj.target.x}, {obj.target.z}) · {obj.priority}
                           </div>
                         </div>
                         <span
@@ -263,15 +296,17 @@ export function MissionControlPanel({
           <div className="space-y-5">
             <BeliefMapCanvas
               beliefGrid={beliefGrid}
-              robotGridPos={robot.gridPos}
-              headingRad={robot.headingRad}
+              baseCoord={baseCoord}
+              survivorCoord={survivorCoord}
+              relayCoord={relayCoord}
+              robots={units}
               waypoints={activeWaypoints}
               survivorFound={survivorFound}
             />
 
             <section className="space-y-2.5 pt-2 border-t border-[#212834]">
               <h2 className="font-display text-sm font-semibold tracking-wide text-[#F2F4F7]">
-                Depth LiDAR & Environmental Sensors
+                Depth LiDAR &amp; Environmental Telemetry
               </h2>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="p-2.5 rounded bg-[#161B23] border border-[#222A36]">
@@ -281,9 +316,13 @@ export function MissionControlPanel({
                   </div>
                 </div>
                 <div className="p-2.5 rounded bg-[#161B23] border border-[#222A36]">
-                  <div className="text-[#9BA3B0]">Min Depth (L / R)</div>
-                  <div className="mt-0.5 font-mono-tabular text-sm text-white">
-                    {sensors.leftDepthMeters.toFixed(1)}m / {sensors.rightDepthMeters.toFixed(1)}m
+                  <div className="text-[#9BA3B0]">Chemical Vapor</div>
+                  <div
+                    className={`mt-0.5 font-mono-tabular text-sm ${
+                      sensors.chemicalPpm > 20 ? 'text-lime-400' : 'text-white'
+                    }`}
+                  >
+                    {sensors.chemicalPpm.toFixed(1)} ppm
                   </div>
                 </div>
                 <div className="p-2.5 rounded bg-[#161B23] border border-[#222A36]">
@@ -297,6 +336,16 @@ export function MissionControlPanel({
                   </div>
                 </div>
                 <div className="p-2.5 rounded bg-[#161B23] border border-[#222A36]">
+                  <div className="text-[#9BA3B0]">Flood Water Depth</div>
+                  <div
+                    className={`mt-0.5 font-mono-tabular text-sm ${
+                      sensors.waterDepthM > 0.25 ? 'text-sky-400' : 'text-white'
+                    }`}
+                  >
+                    {sensors.waterDepthM.toFixed(2)} m
+                  </div>
+                </div>
+                <div className="p-2.5 rounded bg-[#161B23] border border-[#222A36]">
                   <div className="text-[#9BA3B0]">Seismic Vibration</div>
                   <div
                     className={`mt-0.5 font-mono-tabular text-sm ${
@@ -304,12 +353,6 @@ export function MissionControlPanel({
                     }`}
                   >
                     {sensors.vibrationHz.toFixed(1)} Hz
-                  </div>
-                </div>
-                <div className="p-2.5 rounded bg-[#161B23] border border-[#222A36]">
-                  <div className="text-[#9BA3B0]">Ambient Temp</div>
-                  <div className="mt-0.5 font-mono-tabular text-sm text-white">
-                    {sensors.temperatureC.toFixed(1)} °C
                   </div>
                 </div>
                 <div className="p-2.5 rounded bg-[#161B23] border border-[#222A36]">
@@ -332,7 +375,7 @@ export function MissionControlPanel({
         {activeTab === 'logs' && (
           <div className="space-y-3">
             <div className="flex flex-wrap gap-1">
-              {(['ALL', 'COMMANDER', 'NAVIGATION', 'SAFETY', 'PERCEPTION', 'ROBOT'] as const).map(
+              {(['ALL', 'COMMANDER', 'FLEET', 'NAVIGATION', 'SAFETY', 'PERCEPTION', 'ROBOT'] as const).map(
                 (actor) => (
                   <button
                     key={actor}

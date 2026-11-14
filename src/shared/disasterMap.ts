@@ -237,12 +237,26 @@ export function worldToGrid(x: number, z: number): GridCoord {
 export function isCellSolidObstacle(cell: CellType): boolean {
   return (
     cell === 'wall' ||
+    cell === 'mountain_cliff' ||
     cell === 'rubble' ||
     cell === 'collapsed_passage' ||
     cell === 'staircase'
   );
 }
 
-export function isCellHazard(cell: CellType): boolean {
-  return cell === 'electrical_hazard' || cell === 'unstable_zone';
+export function isCellHighBarrier(cell: CellType): boolean {
+  return cell === 'wall' || cell === 'mountain_cliff';
 }
+
+export function isCellHazard(cell: CellType): boolean {
+  return (
+    cell === 'electrical_hazard' ||
+    cell === 'unstable_zone' ||
+    cell === 'chemical_hazard'
+  );
+}
+
+export function isCellWater(cell: CellType): boolean {
+  return cell === 'flood_water';
+}
+

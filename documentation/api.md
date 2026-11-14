@@ -1,13 +1,30 @@
-# RELAY Backend API & WebSocket Reference
+# RELAY 2.0 Backend REST & WebSocket API
 
-## HTTP Endpoints (`server.ts`)
+Base URL: `http://localhost:3000`
 
-- `GET /api/health` — Returns backend readiness, SQLite status, and whether `GEMINI_API_KEY` is configured.
-- `POST /api/commander/interpret` — Accepts `{ instruction: string, mission_id?: string, preferOffline?: boolean }` and returns `{ plan: MissionPlan, warning?: string }`.
-- `GET /api/missions` — Lists recent SQLite-persisted `MissionRecord` entries.
-- `POST /api/missions` — Persists or updates a `MissionRecord` in `data/relay.db`.
-- `GET /api/missions/:id/events` — Returns chronological `AgentEvent[]` logs for a mission.
+## Health & Consolidated State
+- `GET /api/health` — Backend status, SQLite connectivity, and `geminiConfigured` flag.
+- `GET /api/state` — Returns `{ profile, robots, transactions, missions, saveSlots }`.
 
-## WebSocket Channel (`/ws`)
+## Profile & World Navigation
+- `POST /api/profile/settings` — Updates `{ graphicsQuality, weatherEnabled, dayNightCycle, audioEnabled, voiceDialogue, showLidar }`.
+- `POST /api/profile/region` — Switches `active_region` (validated against `unlocked_regions`).
 
-- Streams `AgentEvent` telemetry packets `{ type: "agent_event", payload: AgentEvent }` from the active simulation into SQLite `agent_events`.
+## Garage & Fleet Management
+- `POST /api/garage/purchase` — `{ robotId }`: Validates chapter unlock & RC balance, deducts RC, adds unit to `owned_robots`.
+- `POST /api/garage/upgrade` — `{ robotId, category }`: Upgrades subsystem `Lv.0 -> Lv.3` and logs wallet transaction.
+- `POST /api/garage/equip` — `{ robotId, moduleId, equip }`: Equips/unequips up to 3 modules per unit.
+- `POST /api/garage/deploy` — `{ robotId, slot: 1 | 2 | null }`: Assigns active Slot 1 / Slot 2 fleet deployment.
+- `POST /api/garage/customize` — `{ robotId, customName, hullColor }`: Updates unit callsign and hull livery.
+- `POST /api/garage/repair` — `{ robotId }`: Restores hull integrity to 100% for calculated RC cost.
+
+## Campaign, Commander & Saves
+- `POST /api/commander/interpret` — `{ instruction, mission_id, regionId, fleetRobotIds, preferOffline }`: Returns structured `MissionPlan`.
+- `POST /api/campaign/complete-mission` — `{ campaignMissionId, bonusEarned, totalScore }`: Pays RC rewards and unlocks next campaign chapters/regions.
+- `POST /api/campaign/choice` — `{ choice: 'human_oversight' | 'autonomous_accord' }`: Records Chapter 6 ending.
+- `POST /api/missions` & `GET /api/missions` — Persists and lists mission debrief records.
+- `GET /api/missions/:id/events` — Returns stored agent telemetry events.
+- `POST /api/save`, `POST /api/save/load`, `POST /api/game/new` — Manages persistent SQLite save snapshots and career resets.
+
+## WebSocket Telemetry
+- `WS /ws` — Streams live `agent_event` packets into SQLite `agent_events`.

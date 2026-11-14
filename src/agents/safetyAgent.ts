@@ -1,8 +1,15 @@
-import { BASE_COORD, isCellHazard, isCellSolidObstacle } from '../shared/disasterMap';
+import {
+  BASE_COORD,
+  isCellHazard,
+  isCellHighBarrier,
+  isCellSolidObstacle,
+  isCellWater,
+} from '../shared/disasterMap';
 import type {
   CellType,
   GridCoord,
   MissionTask,
+  RobotCapabilities,
   RoutePlan,
   SafetyEvaluation,
   SensorReading,
@@ -15,6 +22,8 @@ export interface SafetyContext {
   batteryPct: number;
   avoidZones: string[];
   forceUnsafeOverride?: boolean;
+  capabilities?: RobotCapabilities;
+  baseCoord?: GridCoord;
 }
 
 const MIN_BATTERY_RESERVE_PCT = 10;
@@ -22,6 +31,8 @@ const CRITICAL_BATTERY_PCT = 18;
 const CRITICAL_FRONT_DEPTH_M = 0.62;
 const MAX_SAFE_EM_FIELD_KVM = 8.5;
 const MAX_SAFE_VIBRATION_HZ = 28.0;
+const MAX_SAFE_CHEMICAL_PPM = 35.0;
+const MAX_SAFE_WATER_DEPTH_M = 0.45;
 
 /**
  * Deterministic Safety Agent.
@@ -34,6 +45,7 @@ export function evaluateProposedRoute(
 ): SafetyEvaluation {
   const violatedRules: string[] = [];
   const reasons: string[] = [];
+  const caps = ctx.capabilities;
 
   if (ctx.forceUnsafeOverride) {
     violatedRules.push('RULE_PROHIBITED_HAZARD_OVERRIDE');
@@ -64,7 +76,8 @@ export function evaluateProposedRoute(
     }
 
     const cellType = ctx.beliefGrid[cellCoord.z][cellCoord.x];
-    if (isCellSolidObstacle(cellType)) {
+
+    if (isCellHighBarrier(cellType)) {
       violatedRules.push('RULE_OBSTACLE_COLLISION');
       reasons.push(
         `Route intersects impassable ${cellType.replace('_', ' ')} at (${cellCoord.x}, ${cellCoord.z}).`
@@ -72,7 +85,35 @@ export function evaluateProposedRoute(
       break;
     }
 
-    if (isCellHazard(cellType)) {
+    if (isCellSolidObstacle(cellType)) {
+      const allowedFly = Boolean(caps?.aerial);
+      const allowedClear = Boolean(caps?.heavyLift && cellType === 'rubble');
+      if (!allowedFly && !allowedClear) {
+        violatedRules.push('RULE_OBSTACLE_COLLISION');
+        reasons.push(
+          `Route intersects impassable ${cellType.replace('_', ' ')} at (${cellCoord.x}, ${cellCoord.z}).`
+        );
+        break;
+      }
+    }
+
+    if (isCellWater(cellType) && !caps?.waterproof && !caps?.aerial) {
+      violatedRules.push('RULE_FLOOD_WATER_INCOMPATIBLE');
+      reasons.push(
+        `Unit lacks waterproof sealing or aerial flight to cross floodwater at (${cellCoord.x}, ${cellCoord.z}).`
+      );
+      break;
+    }
+
+    if (cellType === 'chemical_hazard') {
+      if (!caps?.hazmatShield && !caps?.aerial) {
+        violatedRules.push('RULE_CHEMICAL_HAZARD_EXPOSURE');
+        reasons.push(
+          `Unit lacks hazmat shielding to enter chemical spill zone at (${cellCoord.x}, ${cellCoord.z}).`
+        );
+        break;
+      }
+    } else if (isCellHazard(cellType) && !caps?.aerial) {
       violatedRules.push('RULE_HAZARD_ZONE_ENTRY');
       reasons.push(
         `Route enters ${cellType === 'electrical_hazard' ? 'high-voltage electrical hazard' : 'unstable structural zone'} at (${cellCoord.x}, ${cellCoord.z}).`
@@ -82,11 +123,14 @@ export function evaluateProposedRoute(
   }
 
   if (route.passesThroughHazard) {
-    if (!violatedRules.includes('RULE_HAZARD_ZONE_ENTRY')) {
+    const blockedHazards = (route.hazardTypesEncountered ?? []).filter((h) => {
+      if (caps?.aerial) return false;
+      if (h === 'chemical_hazard' && caps?.hazmatShield) return false;
+      return true;
+    });
+    if (blockedHazards.length > 0 && !violatedRules.includes('RULE_HAZARD_ZONE_ENTRY')) {
       violatedRules.push('RULE_HAZARD_ZONE_ENTRY');
-      reasons.push(
-        `Proposed path crosses hazardous cells (${(route.hazardTypesEncountered ?? []).join(', ')}).`
-      );
+      reasons.push(`Proposed path crosses hazardous cells (${blockedHazards.join(', ')}).`);
     }
   }
 
@@ -163,22 +207,38 @@ export function evaluateLiveSensorSafety(
   sensors: SensorReading,
   batteryPct: number,
   isReturningToBase: boolean,
-  currentGridPos: GridCoord
+  currentGridPos: GridCoord,
+  capabilities?: RobotCapabilities,
+  baseCoord: GridCoord = BASE_COORD
 ): SafetyEvaluation {
   const reasons: string[] = [];
   const violatedRules: string[] = [];
 
-  if (sensors.electricalFieldKvM >= MAX_SAFE_EM_FIELD_KVM) {
+  if (!capabilities?.aerial && sensors.electricalFieldKvM >= MAX_SAFE_EM_FIELD_KVM) {
     violatedRules.push('LIVE_ELECTRICAL_ARC_PROXIMITY');
     reasons.push(
       `High-voltage EM field spike (${sensors.electricalFieldKvM.toFixed(1)} kV/m). Emergency stop engaged.`
     );
   }
 
-  if (sensors.vibrationHz >= MAX_SAFE_VIBRATION_HZ) {
+  if (!capabilities?.aerial && sensors.vibrationHz >= MAX_SAFE_VIBRATION_HZ) {
     violatedRules.push('LIVE_STRUCTURAL_INSTABILITY');
     reasons.push(
       `Structural vibration threshold exceeded (${sensors.vibrationHz.toFixed(1)} Hz). Emergency stop engaged.`
+    );
+  }
+
+  if (!capabilities?.hazmatShield && !capabilities?.aerial && sensors.chemicalPpm >= MAX_SAFE_CHEMICAL_PPM) {
+    violatedRules.push('LIVE_CHEMICAL_CONTAMINATION');
+    reasons.push(
+      `Corrosive chemical vapor exceeded safe threshold (${sensors.chemicalPpm.toFixed(1)} ppm). Replanning required.`
+    );
+  }
+
+  if (!capabilities?.waterproof && !capabilities?.aerial && sensors.waterDepthM >= MAX_SAFE_WATER_DEPTH_M) {
+    violatedRules.push('LIVE_FLOOD_INGRESS_RISK');
+    reasons.push(
+      `Flood depth (${sensors.waterDepthM.toFixed(2)}m) exceeds unsealed chassis tolerance.`
     );
   }
 
@@ -190,7 +250,7 @@ export function evaluateLiveSensorSafety(
   }
 
   const atBase =
-    Math.hypot(currentGridPos.x - BASE_COORD.x, currentGridPos.z - BASE_COORD.z) <= 1.2;
+    Math.hypot(currentGridPos.x - baseCoord.x, currentGridPos.z - baseCoord.z) <= 1.2;
 
   if (batteryPct <= CRITICAL_BATTERY_PCT && !isReturningToBase && !atBase) {
     violatedRules.push('LIVE_LOW_BATTERY_RETURN');

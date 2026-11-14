@@ -1,23 +1,28 @@
 import { useEffect, useRef } from 'react';
-import { BASE_COORD, MAP_HEIGHT, MAP_WIDTH, SURVIVOR_COORD } from '../shared/disasterMap';
-import type { CellType, GridCoord } from '../shared/types';
+import { MAP_HEIGHT, MAP_WIDTH } from '../shared/disasterMap';
+import type { CellType, GridCoord, RobotStateSnapshot } from '../shared/types';
 
 interface BeliefMapCanvasProps {
   beliefGrid: CellType[][];
-  robotGridPos: GridCoord;
-  headingRad: number;
+  baseCoord: GridCoord;
+  survivorCoord: GridCoord;
+  relayCoord?: GridCoord;
+  robots: RobotStateSnapshot[];
   waypoints: GridCoord[];
   survivorFound: boolean;
 }
 
 export function BeliefMapCanvas({
   beliefGrid,
-  robotGridPos,
-  headingRad,
+  baseCoord,
+  survivorCoord,
+  relayCoord,
+  robots,
   waypoints,
   survivorFound,
 }: BeliefMapCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const terrainCacheRef = useRef<{ canvas: HTMLCanvasElement; cells: string[] } | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -30,55 +35,90 @@ export function BeliefMapCanvas({
     const cellW = w / MAP_WIDTH;
     const cellH = h / MAP_HEIGHT;
 
-    ctx.fillStyle = '#0d1015';
-    ctx.fillRect(0, 0, w, h);
+    let cache = terrainCacheRef.current;
+    if (!cache || cache.canvas.width !== w || cache.canvas.height !== h) {
+      const offscreen = document.createElement('canvas');
+      offscreen.width = w;
+      offscreen.height = h;
+      cache = { canvas: offscreen, cells: new Array(MAP_WIDTH * MAP_HEIGHT).fill('') };
+      terrainCacheRef.current = cache;
+    }
 
-    for (let z = 0; z < MAP_HEIGHT; z++) {
+    let terrainDirty = false;
+    for (let z = 0; z < MAP_HEIGHT && !terrainDirty; z++) {
       for (let x = 0; x < MAP_WIDTH; x++) {
-        const cell = beliefGrid[z][x];
-        let color = '#171c24';
-        if (cell === 'wall') color = '#475569';
-        else if (cell === 'rubble') color = '#64748b';
-        else if (cell === 'collapsed_passage') color = '#f97316'; // Discovered blockage
-        else if (cell === 'staircase') color = '#52525b';
-        else if (cell === 'electrical_hazard') color = '#eab308';
-        else if (cell === 'unstable_zone') color = '#ef4444';
-        else if (cell === 'charging_base') color = '#10b981';
-
-        ctx.fillStyle = color;
-        ctx.fillRect(x * cellW + 0.5, z * cellH + 0.5, cellW - 1, cellH - 1);
+        if (cache.cells[z * MAP_WIDTH + x] !== beliefGrid[z][x]) {
+          terrainDirty = true;
+          break;
+        }
       }
     }
 
-    // Draw Base label marker
+    if (terrainDirty) {
+      const tCtx = cache.canvas.getContext('2d');
+      if (tCtx) {
+        tCtx.fillStyle = '#0d1015';
+        tCtx.fillRect(0, 0, w, h);
+
+        for (let z = 0; z < MAP_HEIGHT; z++) {
+          for (let x = 0; x < MAP_WIDTH; x++) {
+            const cell = beliefGrid[z][x];
+            cache.cells[z * MAP_WIDTH + x] = cell;
+            let color = '#171c24';
+            if (cell === 'wall') color = '#475569';
+            else if (cell === 'mountain_cliff') color = '#57534e';
+            else if (cell === 'rubble') color = '#64748b';
+            else if (cell === 'collapsed_passage') color = '#f97316';
+            else if (cell === 'staircase') color = '#52525b';
+            else if (cell === 'road') color = '#1e293b';
+            else if (cell === 'bridge') color = '#78716c';
+            else if (cell === 'building_interior') color = '#27303f';
+            else if (cell === 'flood_water') color = '#0284c7';
+            else if (cell === 'chemical_hazard') color = '#84cc16';
+            else if (cell === 'electrical_hazard') color = '#eab308';
+            else if (cell === 'unstable_zone') color = '#ef4444';
+            else if (cell === 'charging_base') color = '#10b981';
+
+            tCtx.fillStyle = color;
+            tCtx.fillRect(x * cellW + 0.5, z * cellH + 0.5, cellW - 1, cellH - 1);
+          }
+        }
+      }
+    }
+
+    ctx.drawImage(cache.canvas, 0, 0);
+
+    // Charging Base
     ctx.strokeStyle = '#34d399';
     ctx.lineWidth = 1.5;
-    ctx.strokeRect(
-      (BASE_COORD.x - 1) * cellW,
-      (BASE_COORD.z - 1) * cellH,
-      cellW * 3,
-      cellH * 3
-    );
+    ctx.strokeRect((baseCoord.x - 1) * cellW, (baseCoord.z - 1) * cellH, cellW * 3, cellH * 3);
 
-    // Draw planned A* waypoints
-    if (waypoints.length > 0) {
+    // Relay Node
+    if (relayCoord) {
+      ctx.fillStyle = '#a855f7';
+      ctx.fillRect(relayCoord.x * cellW + 2, relayCoord.z * cellH + 2, cellW - 4, cellH - 4);
+    }
+
+    // Active A* Path
+    const leadRobot = robots[0];
+    if (waypoints.length > 0 && leadRobot) {
       ctx.strokeStyle = '#38bdf8';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo((robotGridPos.x + 0.5) * cellW, (robotGridPos.z + 0.5) * cellH);
+      ctx.moveTo((leadRobot.gridPos.x + 0.5) * cellW, (leadRobot.gridPos.z + 0.5) * cellH);
       for (const wp of waypoints) {
         ctx.lineTo((wp.x + 0.5) * cellW, (wp.z + 0.5) * cellH);
       }
       ctx.stroke();
     }
 
-    // Draw survivor marker only after perception discovers it
+    // Survivor pin once discovered
     if (survivorFound) {
       ctx.fillStyle = '#10b981';
       ctx.beginPath();
       ctx.arc(
-        (SURVIVOR_COORD.x + 0.5) * cellW,
-        (SURVIVOR_COORD.z + 0.5) * cellH,
+        (survivorCoord.x + 0.5) * cellW,
+        (survivorCoord.z + 0.5) * cellH,
         cellW * 0.45,
         0,
         Math.PI * 2
@@ -86,26 +126,28 @@ export function BeliefMapCanvas({
       ctx.fill();
     }
 
-    // Draw robot pose & heading arrow
-    const rx = (robotGridPos.x + 0.5) * cellW;
-    const rz = (robotGridPos.z + 0.5) * cellH;
-    ctx.save();
-    ctx.translate(rx, rz);
-    ctx.rotate(-headingRad + Math.PI / 2);
-    ctx.fillStyle = '#f97316';
-    ctx.beginPath();
-    ctx.moveTo(cellW * 0.55, 0);
-    ctx.lineTo(-cellW * 0.35, -cellH * 0.35);
-    ctx.lineTo(-cellW * 0.35, cellH * 0.35);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  }, [beliefGrid, robotGridPos, headingRad, waypoints, survivorFound]);
+    // Render all deployed robot markers
+    robots.forEach((robot, idx) => {
+      const rx = (robot.gridPos.x + 0.5) * cellW;
+      const rz = (robot.gridPos.z + 0.5) * cellH;
+      ctx.save();
+      ctx.translate(rx, rz);
+      ctx.rotate(-robot.headingRad + Math.PI / 2);
+      ctx.fillStyle = idx === 0 ? '#f97316' : '#10b981';
+      ctx.beginPath();
+      ctx.moveTo(cellW * 0.55, 0);
+      ctx.lineTo(-cellW * 0.35, -cellH * 0.35);
+      ctx.lineTo(-cellW * 0.35, cellH * 0.35);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    });
+  }, [beliefGrid, baseCoord, survivorCoord, relayCoord, robots, waypoints, survivorFound]);
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between text-xs text-[#9BA3B0]">
-        <span>Robot Belief Occupancy Map</span>
+        <span>Fleet Belief Occupancy Map</span>
         <span className="font-mono-tabular">26m × 20m</span>
       </div>
       <canvas
@@ -119,13 +161,13 @@ export function BeliefMapCanvas({
           <span className="w-2.5 h-2.5 rounded-xs bg-[#10b981]" /> Base / Survivor
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-xs bg-[#f97316]" /> Discovered Collapse
+          <span className="w-2.5 h-2.5 rounded-xs bg-[#0284c7]" /> Floodwater
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-xs bg-[#84cc16]" /> Hazmat
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-xs bg-[#eab308]" /> Electrical
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-xs bg-[#ef4444]" /> Unstable
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="w-2.5 h-0.5 bg-[#38bdf8]" /> A* Path

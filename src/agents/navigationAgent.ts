@@ -4,14 +4,18 @@ import {
   MAP_HEIGHT,
   MAP_WIDTH,
   isCellHazard,
+  isCellHighBarrier,
   isCellSolidObstacle,
+  isCellWater,
 } from '../shared/disasterMap';
-import type { CellType, GridCoord, RoutePlan } from '../shared/types';
+import type { CellType, GridCoord, RobotCapabilities, RoutePlan, WeatherType } from '../shared/types';
 
 export interface PathfindingOptions {
   allowHazardTraversal?: boolean;
   avoidCells?: Set<string>;
   batteryCostPerMeter?: number;
+  capabilities?: RobotCapabilities;
+  weather?: WeatherType;
 }
 
 interface AStarNode {
@@ -54,6 +58,7 @@ export function calculateAStarPath(
   const allowHazard = options.allowHazardTraversal ?? false;
   const avoidCells = options.avoidCells ?? new Set<string>();
   const batteryCostPerMeter = options.batteryCostPerMeter ?? 0.55;
+  const caps = options.capabilities;
 
   if (!isInsideGrid(start.x, start.z) || !isInsideGrid(goal.x, goal.z)) {
     return {
@@ -68,7 +73,27 @@ export function calculateAStarPath(
   const isWalkable = (x: number, z: number): boolean => {
     if (!isInsideGrid(x, z)) return false;
     const cell = beliefGrid[z][x];
-    if (isCellSolidObstacle(cell)) return false;
+
+    if (isCellHighBarrier(cell)) return false;
+
+    if (isCellSolidObstacle(cell)) {
+      // Aerial VTOL drones fly over rubble, collapsed passages, and staircases
+      if (caps?.aerial) return true;
+      // Heavy-lift breachers can clear moderate rubble (not solid collapsed slabs)
+      if (caps?.heavyLift && cell === 'rubble') return true;
+      return false;
+    }
+
+    if (isCellWater(cell)) {
+      if (caps?.waterproof || caps?.aerial) return true;
+      return false;
+    }
+
+    if (cell === 'chemical_hazard') {
+      if (allowHazard || caps?.hazmatShield || caps?.aerial) return true;
+      return false;
+    }
+
     if (!allowHazard && isCellHazard(cell)) return false;
     if (!allowHazard && avoidCells.has(`${x},${z}`)) return false;
     return true;

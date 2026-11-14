@@ -5,7 +5,9 @@ import {
   SURVIVOR_COORD,
   gridToWorld,
   isCellHazard,
+  isCellHighBarrier,
   isCellSolidObstacle,
+  isCellWater,
   worldToGrid,
 } from '../shared/disasterMap';
 import type {
@@ -20,9 +22,18 @@ export interface SensorStepResult {
   newlyDiscoveredBlockages: GridCoord[];
 }
 
+export interface ExtendedSensorOptions {
+  chemicalHazardCells?: GridCoord[];
+  floodCells?: GridCoord[];
+  survivorCoord?: GridCoord;
+  lidarRangeM?: number;
+  cameraRangeM?: number;
+  aerial?: boolean;
+}
+
 const LIDAR_ANGLES_DEG = [-60, -45, -30, -15, 0, 15, 30, 45, 60];
-const MAX_LIDAR_RANGE_M = 6.5;
-const CAMERA_RANGE_M = 6.0;
+const DEFAULT_LIDAR_RANGE_M = 6.5;
+const DEFAULT_CAMERA_RANGE_M = 6.0;
 const CAMERA_HALF_FOV_RAD = (62 * Math.PI) / 180;
 
 /**
@@ -37,16 +48,24 @@ export function sampleRobotSensors(
   groundTruthGrid: CellType[][],
   beliefGrid: CellType[][],
   electricalHazardCells: GridCoord[],
-  unstableZoneCells: GridCoord[]
+  unstableZoneCells: GridCoord[],
+  options: ExtendedSensorOptions = {}
 ): SensorStepResult {
+  const maxLidarRange = options.lidarRangeM ?? DEFAULT_LIDAR_RANGE_M;
+  const maxCameraRange = options.cameraRangeM ?? DEFAULT_CAMERA_RANGE_M;
+  const survivorCoord = options.survivorCoord ?? SURVIVOR_COORD;
+  const chemicalCells = options.chemicalHazardCells ?? [];
+  const floodCells = options.floodCells ?? [];
+  const isAerial = Boolean(options.aerial);
+
   const lidarRays: LidarRayReading[] = [];
   const newlyDiscoveredBlockages: GridCoord[] = [];
   const discoveredKeys = new Set<string>();
 
-  let minDepth = MAX_LIDAR_RANGE_M;
-  let frontDepth = MAX_LIDAR_RANGE_M;
-  let leftDepth = MAX_LIDAR_RANGE_M;
-  let rightDepth = MAX_LIDAR_RANGE_M;
+  let minDepth = maxLidarRange;
+  let frontDepth = maxLidarRange;
+  let leftDepth = maxLidarRange;
+  let rightDepth = maxLidarRange;
 
   for (const angleDeg of LIDAR_ANGLES_DEG) {
     const relRad = (angleDeg * Math.PI) / 180;
@@ -54,12 +73,12 @@ export function sampleRobotSensors(
     const dirX = Math.sin(worldRayRad);
     const dirZ = Math.cos(worldRayRad);
 
-    let hitDistance = MAX_LIDAR_RANGE_M;
+    let hitDistance = maxLidarRange;
     let hitType: LidarRayReading['hitType'] = 'clear';
     let hitCell: GridCoord | undefined;
 
     const stepSize = 0.18;
-    for (let d = 0.35; d <= MAX_LIDAR_RANGE_M; d += stepSize) {
+    for (let d = 0.35; d <= maxLidarRange; d += stepSize) {
       const px = worldX + dirX * d;
       const pz = worldZ + dirZ * d;
       const cellCoord = worldToGrid(px, pz);
@@ -77,20 +96,25 @@ export function sampleRobotSensors(
 
       const cell = groundTruthGrid[cellCoord.z][cellCoord.x];
 
-      if (isCellSolidObstacle(cell)) {
-        hitDistance = d;
-        hitCell = cellCoord;
-        hitType = cell === 'wall' ? 'wall' : 'debris';
+      const blocksRay = isAerial ? isCellHighBarrier(cell) : isCellSolidObstacle(cell);
 
-        // Update robot's belief grid if this blockage wasn't previously known
+      if (isCellSolidObstacle(cell) || isCellWater(cell)) {
         if (beliefGrid[cellCoord.z][cellCoord.x] !== cell) {
           beliefGrid[cellCoord.z][cellCoord.x] = cell;
-          const k = `${cellCoord.x},${cellCoord.z}`;
-          if (!discoveredKeys.has(k)) {
-            discoveredKeys.add(k);
-            newlyDiscoveredBlockages.push(cellCoord);
+          if (isCellSolidObstacle(cell)) {
+            const k = `${cellCoord.x},${cellCoord.z}`;
+            if (!discoveredKeys.has(k)) {
+              discoveredKeys.add(k);
+              newlyDiscoveredBlockages.push(cellCoord);
+            }
           }
         }
+      }
+
+      if (blocksRay) {
+        hitDistance = d;
+        hitCell = cellCoord;
+        hitType = cell === 'wall' || cell === 'mountain_cliff' ? 'wall' : 'debris';
         break;
       }
 
@@ -118,7 +142,7 @@ export function sampleRobotSensors(
     }
   }
 
-  // Environmental sensors (temperature, vibration, EM field)
+  // Environmental sensors (temperature, vibration, EM field, chemical ppm, flood depth)
   let minElecDist = 99;
   for (const c of electricalHazardCells) {
     const w = gridToWorld(c);
@@ -131,30 +155,49 @@ export function sampleRobotSensors(
     minUnstableDist = Math.min(minUnstableDist, Math.hypot(w.x - worldX, w.z - worldZ));
   }
 
+  let minChemicalDist = 99;
+  for (const c of chemicalCells) {
+    const w = gridToWorld(c);
+    minChemicalDist = Math.min(minChemicalDist, Math.hypot(w.x - worldX, w.z - worldZ));
+  }
+
+  let minFloodDist = 99;
+  for (const c of floodCells) {
+    const w = gridToWorld(c);
+    minFloodDist = Math.min(minFloodDist, Math.hypot(w.x - worldX, w.z - worldZ));
+  }
+
   const electricalFieldKvM = Number(
     Math.max(0.12, 14.5 * Math.exp(-minElecDist * 0.72)).toFixed(2)
   );
   const vibrationHz = Number(
     Math.max(1.4, 38.0 * Math.exp(-minUnstableDist * 0.65)).toFixed(2)
   );
+  const chemicalPpm = Number(
+    (chemicalCells.length > 0 ? Math.max(0.5, 65.0 * Math.exp(-minChemicalDist * 0.62)) : 0.4).toFixed(1)
+  );
+  const currentGrid = worldToGrid(worldX, worldZ);
+  const onWaterCell = groundTruthGrid[currentGrid.z]?.[currentGrid.x] === 'flood_water';
+  const waterDepthM = Number(
+    (onWaterCell ? 0.85 : minFloodDist < 1.3 ? 0.32 : 0).toFixed(2)
+  );
   const temperatureC = Number(
     (21.5 + 18.0 * Math.exp(-minElecDist * 0.6) + Math.sin(worldX + worldZ) * 0.4).toFixed(1)
   );
 
-  let hazardType: 'electrical' | 'unstable' | 'none' = 'none';
-  let hazardDist = Math.min(minElecDist, minUnstableDist);
-  if (minElecDist <= minUnstableDist && minElecDist < 4.5) {
-    hazardType = 'electrical';
-    hazardDist = minElecDist;
-  } else if (minUnstableDist < 4.5) {
-    hazardType = 'unstable';
-    hazardDist = minUnstableDist;
-  } else {
-    hazardDist = Number(hazardDist.toFixed(2));
+  let hazardType: SensorReading['hazardProximity']['type'] = 'none';
+  const minAll = Math.min(minElecDist, minUnstableDist, minChemicalDist, minFloodDist);
+  let hazardDist = minAll;
+  if (minAll < 4.5) {
+    if (minAll === minElecDist) hazardType = 'electrical';
+    else if (minAll === minUnstableDist) hazardType = 'unstable';
+    else if (minAll === minChemicalDist) hazardType = 'chemical';
+    else hazardType = 'flood';
   }
+  hazardDist = Number(hazardDist.toFixed(2));
 
   // Survivor optical/thermal camera perception with occlusion check
-  const survivorWorld = gridToWorld(SURVIVOR_COORD);
+  const survivorWorld = gridToWorld(survivorCoord);
   const dx = survivorWorld.x - worldX;
   const dz = survivorWorld.z - worldZ;
   const distToSurvivor = Math.hypot(dx, dz);
@@ -165,13 +208,21 @@ export function sampleRobotSensors(
   let confidence = 0;
 
   if (
-    distToSurvivor <= CAMERA_RANGE_M &&
+    distToSurvivor <= maxCameraRange &&
     (Math.abs(relBearing) <= CAMERA_HALF_FOV_RAD || distToSurvivor <= 2.4)
   ) {
-    const clearLOS = hasLineOfSight(worldX, worldZ, survivorWorld.x, survivorWorld.z, groundTruthGrid);
+    const clearLOS = hasLineOfSight(
+      worldX,
+      worldZ,
+      survivorWorld.x,
+      survivorWorld.z,
+      groundTruthGrid,
+      survivorCoord,
+      isAerial
+    );
     if (clearLOS) {
       survivorDetected = true;
-      confidence = Math.min(99, Math.round(72 + (1 - distToSurvivor / CAMERA_RANGE_M) * 27));
+      confidence = Math.min(99, Math.round(72 + (1 - distToSurvivor / maxCameraRange) * 27));
     }
   }
 
@@ -185,16 +236,18 @@ export function sampleRobotSensors(
       temperatureC,
       vibrationHz,
       electricalFieldKvM,
+      chemicalPpm,
+      waterDepthM,
       hazardProximity: {
         type: hazardType,
-        distance: Number(hazardDist.toFixed(2)),
+        distance: hazardDist,
       },
       survivorSignal: {
         detected: survivorDetected,
         confidence,
         bearingDeg: Math.round((relBearing * 180) / Math.PI),
         distance: Number(distToSurvivor.toFixed(2)),
-        worldPos: survivorDetected ? { ...SURVIVOR_COORD } : undefined,
+        worldPos: survivorDetected ? { ...survivorCoord } : undefined,
       },
     },
     newlyDiscoveredBlockages,
@@ -206,7 +259,9 @@ function hasLineOfSight(
   z0: number,
   x1: number,
   z1: number,
-  groundTruthGrid: CellType[][]
+  groundTruthGrid: CellType[][],
+  survivorCoord: GridCoord,
+  isAerial: boolean
 ): boolean {
   const dist = Math.hypot(x1 - x0, z1 - z0);
   const steps = Math.ceil(dist / (CELL_SIZE * 0.25));
@@ -215,8 +270,9 @@ function hasLineOfSight(
     const px = x0 + (x1 - x0) * t;
     const pz = z0 + (z1 - z0) * t;
     const cellCoord = worldToGrid(px, pz);
-    if (cellCoord.x === SURVIVOR_COORD.x && cellCoord.z === SURVIVOR_COORD.z) continue;
-    if (isCellSolidObstacle(groundTruthGrid[cellCoord.z][cellCoord.x])) {
+    if (cellCoord.x === survivorCoord.x && cellCoord.z === survivorCoord.z) continue;
+    const cell = groundTruthGrid[cellCoord.z][cellCoord.x];
+    if (isAerial ? isCellHighBarrier(cell) : isCellSolidObstacle(cell)) {
       return false;
     }
   }
@@ -229,3 +285,4 @@ function normalizeAngle(rad: number): number {
   while (a < -Math.PI) a += Math.PI * 2;
   return a;
 }
+
