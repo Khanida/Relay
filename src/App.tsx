@@ -133,7 +133,8 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [apiNotice, setApiNotice] = useState<string | null>(null);
 
-  const [cameraMode, setCameraMode] = useState<CameraMode>('third_person');
+  const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
+  const [viewResetNonce, setViewResetNonce] = useState(0);
   const [controlMode, setControlMode] = useState<ControlMode>('auto');
   const [simSpeed, setSimSpeed] = useState<number>(1);
   const [showFpvPip, setShowFpvPip] = useState(true);
@@ -412,6 +413,17 @@ export default function App() {
     }
   };
 
+  const handleResetDefaultView = useCallback(() => {
+    setCameraMode('orbit');
+    setPanelOpen(false);
+    setDockCollapsed(false);
+    setShowFpvPip(true);
+    setShowPerfOverlay(true);
+    setShowDiagnosticsHud(true);
+    setShowTaskSnackbars(true);
+    setViewResetNonce((n) => n + 1);
+  }, []);
+
   const handleResetScene = async () => {
     await syncUnitBatteriesToServer();
     handleSetControlMode('auto');
@@ -667,6 +679,7 @@ export default function App() {
             <RelayViewport
               engine={engine}
               cameraMode={cameraMode}
+              viewResetNonce={viewResetNonce}
               controlMode={controlMode}
               simSpeed={simSpeed}
               showLidar={profile.settings.showLidar}
@@ -828,6 +841,16 @@ export default function App() {
                 }`}
               >
                 <Activity size={15} />
+              </button>
+
+              <button
+                type="button"
+                title="Reset Default View"
+                aria-label="Reset Default View"
+                onClick={handleResetDefaultView}
+                className="p-2 rounded text-[#CBD5E1] hover:text-[#E5C158] hover:bg-[#1E2530] transition-colors"
+              >
+                <RotateCcw size={15} />
               </button>
 
               <button

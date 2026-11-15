@@ -29,6 +29,7 @@ export interface ExtendedSensorOptions {
   lidarRangeM?: number;
   cameraRangeM?: number;
   aerial?: boolean;
+  heavyLift?: boolean;
 }
 
 const LIDAR_ANGLES_DEG = [-60, -45, -30, -15, 0, 15, 30, 45, 60];
@@ -57,6 +58,7 @@ export function sampleRobotSensors(
   const chemicalCells = options.chemicalHazardCells ?? [];
   const floodCells = options.floodCells ?? [];
   const isAerial = Boolean(options.aerial);
+  const isHeavyLift = Boolean(options.heavyLift);
 
   const lidarRays: LidarRayReading[] = [];
   const newlyDiscoveredBlockages: GridCoord[] = [];
@@ -96,7 +98,9 @@ export function sampleRobotSensors(
 
       const cell = groundTruthGrid[cellCoord.z][cellCoord.x];
 
-      const blocksRay = isAerial ? isCellHighBarrier(cell) : isCellSolidObstacle(cell);
+      const blocksRay = isAerial
+        ? isCellHighBarrier(cell)
+        : isCellSolidObstacle(cell) && !(isHeavyLift && cell === 'rubble');
 
       if (isCellSolidObstacle(cell) || isCellWater(cell)) {
         if (beliefGrid[cellCoord.z][cellCoord.x] !== cell) {

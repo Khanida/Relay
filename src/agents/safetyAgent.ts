@@ -145,7 +145,10 @@ export function evaluateProposedRoute(
 
   // Battery sufficiency check (must be able to complete task AND return to Base with reserve)
   if (task.task !== 'return_to_base' && task.task !== 'emergency_stop' && task.task !== 'scan_surroundings') {
-    const returnEstimate = estimateReturnToBaseCost(ctx.beliefGrid, task.target);
+    const returnEstimate = estimateReturnToBaseCost(ctx.beliefGrid, task.target, {
+      baseCoord: ctx.baseCoord,
+      capabilities: ctx.capabilities,
+    });
     const totalProjectedDrain = route.estimatedBatteryCost + returnEstimate.estimatedBatteryCost;
     const requiredBattery = totalProjectedDrain + MIN_BATTERY_RESERVE_PCT;
 

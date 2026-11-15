@@ -59,6 +59,7 @@ interface RelayViewportProps {
   weatherEnabled: boolean;
   graphicsQuality: GraphicsQuality;
   worldVersion: number;
+  viewResetNonce?: number;
   showPerfOverlay?: boolean;
   showDiagnosticsHud?: boolean;
   autoOptimize?: boolean;
@@ -83,6 +84,7 @@ export function RelayViewport({
   weatherEnabled,
   graphicsQuality,
   worldVersion,
+  viewResetNonce = 0,
   showPerfOverlay = true,
   showDiagnosticsHud = true,
   autoOptimize = true,
@@ -117,6 +119,7 @@ export function RelayViewport({
   const autoOptimizeRef = useRef(autoOptimize);
   const onTickSyncRef = useRef(onTickSync);
   const applyTierFnRef = useRef<((tier: OptTier) => void) | null>(null);
+  const resetCameraFnRef = useRef<(() => void) | null>(null);
 
   cameraModeRef.current = cameraMode;
   simSpeedRef.current = simSpeed;
@@ -132,6 +135,12 @@ export function RelayViewport({
       applyTierFnRef.current?.(0);
     }
   }, [autoOptimize]);
+
+  useEffect(() => {
+    if (viewResetNonce > 0) {
+      resetCameraFnRef.current?.();
+    }
+  }, [viewResetNonce]);
 
   // Keyboard Remote Control (active ONLY when user engages Remote Control mode; Automatic AI by default)
   useEffect(() => {
@@ -291,6 +300,12 @@ export function RelayViewport({
       controls.target.set(0, 0.4, 0);
     }
     controls.update();
+
+    resetCameraFnRef.current = () => {
+      mainCamera.position.set(baseW.x - 3.5, 11.5, baseW.z + 11.5);
+      controls.target.set(0, 0.4, 0);
+      controls.update();
+    };
 
     const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
     const world = buildMeridianWorld3D(
@@ -621,6 +636,7 @@ export function RelayViewport({
     return () => {
       disposed = true;
       applyTierFnRef.current = null;
+      resetCameraFnRef.current = null;
       cancelAnimationFrame(frameId);
       clearTimeout(frameId);
       resizeObserver.disconnect();

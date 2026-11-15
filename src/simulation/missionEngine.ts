@@ -70,6 +70,7 @@ export interface RobotUnitRuntime {
   activeWaypoints: GridCoord[];
   waypointCursor: number;
   scanTimerSec: number;
+  replanCooldownSec: number;
   lowBatteryTriggered: boolean;
   latestSensors: SensorReading;
   collisionCount: number;
@@ -234,6 +235,7 @@ export class MissionSimulationEngine {
           lidarRangeM: stats.lidarRangeM,
           cameraRangeM: stats.cameraRangeM,
           aerial: stats.capabilities.aerial,
+          heavyLift: stats.capabilities.heavyLift,
         }
       ).reading;
 
@@ -265,6 +267,7 @@ export class MissionSimulationEngine {
         activeWaypoints: [],
         waypointCursor: 0,
         scanTimerSec: 0,
+        replanCooldownSec: 0,
         lowBatteryTriggered: false,
         latestSensors: initialSensors,
         collisionCount: 0,
@@ -621,6 +624,7 @@ export class MissionSimulationEngine {
         lidarRangeM: unit.stats.lidarRangeM,
         cameraRangeM: unit.stats.cameraRangeM,
         aerial: unit.stats.capabilities.aerial,
+        heavyLift: unit.stats.capabilities.heavyLift,
       }
     );
     unit.latestSensors = sensorStep.reading;
@@ -740,6 +744,7 @@ export class MissionSimulationEngine {
         lidarRangeM: unit.stats.lidarRangeM,
         cameraRangeM: unit.stats.cameraRangeM,
         aerial: unit.stats.capabilities.aerial,
+        heavyLift: unit.stats.capabilities.heavyLift,
       }
     );
     unit.latestSensors = sensorStep.reading;
@@ -809,6 +814,10 @@ export class MissionSimulationEngine {
       this.mapData.baseCoord
     );
 
+    if (unit.replanCooldownSec > 0) {
+      unit.replanCooldownSec = Math.max(0, unit.replanCooldownSec - dt);
+    }
+
     if (!liveSafety.approved) {
       if (liveSafety.recommendedAction === 'return_to_base' && !unit.lowBatteryTriggered) {
         unit.lowBatteryTriggered = true;
@@ -820,17 +829,88 @@ export class MissionSimulationEngine {
       }
 
       if (liveSafety.recommendedAction === 'emergency_stop') {
+        const isCollisionOnly =
+          liveSafety.violatedRules.length === 1 &&
+          liveSafety.violatedRules[0] === 'LIVE_IMMINENT_COLLISION';
+
+        // If approaching/facing an adjacent wall while turning toward a valid waypoint, pivot in place
+        // instead of freezing headingRad and replanning in an infinite loop.
+        const wpGridForTurn =
+          unit.waypointCursor < unit.activeWaypoints.length
+            ? unit.activeWaypoints[unit.waypointCursor]
+            : null;
+        if (isCollisionOnly && wpGridForTurn) {
+          const wpWorld = gridToWorld(wpGridForTurn);
+          const dx = wpWorld.x - unit.pos.x;
+          const dz = wpWorld.z - unit.pos.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist < 0.24) {
+            unit.waypointCursor += 1;
+            return;
+          }
+          const targetHeading = Math.atan2(dx, dz);
+          const headingError = normalizeAngle(targetHeading - unit.headingRad);
+          if (Math.abs(headingError) > 0.2) {
+            const maxTurnSpeed = 4.2;
+            const turnStep = Math.max(
+              -maxTurnSpeed * dt,
+              Math.min(maxTurnSpeed * dt, headingError * 5.0 * dt)
+            );
+            unit.headingRad = normalizeAngle(unit.headingRad + turnStep);
+            unit.turnRateRad = turnStep / dt;
+            unit.speedMps = 0;
+            unit.locomotionState = 'turning';
+            return;
+          }
+        }
+
         unit.speedMps = 0;
         unit.turnRateRad = 0;
         unit.locomotionState = 'emergency_stop';
-        this.callbacks.onSoundCue?.('safety_alert');
-        this.emit('SAFETY', 'safety_rejection', `[${unit.name}] ${liveSafety.reasons.join(' ')}`);
 
-        if (activeTask && activeTask.task !== 'scan_surroundings') {
-          unit.replanCount += 1;
-          this.planUnitTaskRoute(unit, true);
-        } else {
-          this.phase = 'paused';
+        if (unit.replanCooldownSec <= 0) {
+          this.callbacks.onSoundCue?.('safety_alert');
+          this.emit('SAFETY', 'safety_rejection', `[${unit.name}] ${liveSafety.reasons.join(' ')}`);
+          unit.replanCooldownSec = 0.9;
+
+          if (activeTask && activeTask.task !== 'scan_surroundings') {
+            unit.replanCount += 1;
+            this.planUnitTaskRoute(unit, true);
+          } else {
+            this.phase = 'paused';
+            return;
+          }
+        }
+
+        // Turn away toward clearest lateral LiDAR ray or target waypoint so sensor clears
+        const wpAfterReplan =
+          unit.waypointCursor < unit.activeWaypoints.length
+            ? unit.activeWaypoints[unit.waypointCursor]
+            : null;
+        if (wpAfterReplan) {
+          const wpW = gridToWorld(wpAfterReplan);
+          const targetH = Math.atan2(wpW.x - unit.pos.x, wpW.z - unit.pos.z);
+          const err = normalizeAngle(targetH - unit.headingRad);
+          const steerDir =
+            Math.abs(err) > 0.15
+              ? Math.sign(err)
+              : sensorStep.reading.leftDepthMeters >= sensorStep.reading.rightDepthMeters
+                ? -1
+                : 1;
+          unit.headingRad = normalizeAngle(unit.headingRad + steerDir * 3.8 * dt);
+          unit.turnRateRad = steerDir * 3.8;
+          unit.locomotionState = 'turning';
+
+          // Recenter gently inside current walkable cell if jammed against wall corner
+          const cellCenter = gridToWorld(currentGrid);
+          const cx = cellCenter.x - unit.pos.x;
+          const cz = cellCenter.z - unit.pos.z;
+          const cDist = Math.hypot(cx, cz);
+          if (cDist > 0.08) {
+            const nudge = Math.min(cDist, 0.9 * dt);
+            unit.pos.x += (cx / cDist) * nudge;
+            unit.pos.z += (cz / cDist) * nudge;
+          }
         }
         return;
       }
@@ -890,15 +970,18 @@ export class MissionSimulationEngine {
       return;
     }
 
-    // Smooth steering + locomotion
+    // Smooth steering + locomotion (pivot cleanly in place on sharp corners > ~32 deg)
     const targetHeading = Math.atan2(dx, dz);
     const headingError = normalizeAngle(targetHeading - unit.headingRad);
-    const maxTurnSpeed = 3.4;
-    const turnStep = Math.max(-maxTurnSpeed * dt, Math.min(maxTurnSpeed * dt, headingError * 4.5 * dt));
+    const maxTurnSpeed = 3.8;
+    const turnStep = Math.max(-maxTurnSpeed * dt, Math.min(maxTurnSpeed * dt, headingError * 4.8 * dt));
     unit.headingRad = normalizeAngle(unit.headingRad + turnStep);
     unit.turnRateRad = turnStep / dt;
 
-    const alignFactor = Math.max(0.2, Math.cos(Math.min(Math.PI / 2, Math.abs(headingError))));
+    const alignFactor =
+      Math.abs(headingError) > 0.55
+        ? 0
+        : Math.max(0.25, Math.cos(Math.min(Math.PI / 2, Math.abs(headingError))));
     unit.speedMps = unit.stats.speedMps * alignFactor;
 
     const cellHere = this.mapData.groundTruthGrid[currentGrid.z][currentGrid.x];

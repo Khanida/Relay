@@ -280,6 +280,42 @@ test('All 23 missions across Levels 1-6 generate solvable A* routes for recommen
   }
 });
 
+test('All 23 missions simulate end-to-end to completion without getting stuck in safety replan loops', () => {
+  for (const mission of CAMPAIGN_MISSIONS) {
+    const recId = mission.recommendedRobots[0];
+    const engine = new MissionSimulationEngine({}, {
+      regionId: mission.regionId,
+      weather: mission.weather,
+      timeOfDay: mission.timeOfDay,
+      deployedRobots: [
+        {
+          robot_id: recId,
+          custom_name: ROBOT_CATALOG[recId].codeName,
+          hull_color: ROBOT_CATALOG[recId].primaryColor,
+          integrity_pct: 100,
+          battery_pct: 100,
+          upgrades: { battery: 0, speed: 0, lidar: 0, thermal: 0, weather_seal: 0, armor: 0 },
+          equipped_modules: [],
+          deployment_slot: 1,
+          purchased_at: new Date().toISOString(),
+        },
+      ],
+      missionModifiers: mission.modifiers,
+    });
+    engine.startFromInstruction(mission.defaultInstruction, mission.id);
+    for (let i = 0; i < 4000; i++) {
+      engine.step(0.05);
+      if (engine.phase === 'completed' || engine.phase === 'failed' || engine.phase === 'paused') break;
+    }
+    assert.equal(
+      engine.phase,
+      'completed',
+      `Mission ${mission.id} got stuck in phase ${engine.phase} at (${engine.getSnapshot().gridPos.x}, ${engine.getSnapshot().gridPos.z})`
+    );
+    assert.ok(engine.replanCount < 25, `Excessive replanning (${engine.replanCount}) in ${mission.id}`);
+  }
+});
+
 test('Control mode defaults to Automatic AI and Remote Control enables manual keyboard steering', () => {
   const lvl1 = CAMPAIGN_MISSIONS.find((m) => m.id === 'ch1_first_light')!;
   const lvl6 = CAMPAIGN_MISSIONS.find((m) => m.id === 'ch6_ashfall')!;

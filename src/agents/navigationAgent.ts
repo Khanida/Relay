@@ -244,11 +244,15 @@ export function computePathDistance(path: GridCoord[]): number {
 
 export function estimateReturnToBaseCost(
   beliefGrid: CellType[][],
-  from: GridCoord
+  from: GridCoord,
+  options?: { baseCoord?: GridCoord; capabilities?: RobotCapabilities }
 ): { distanceMeters: number; estimatedBatteryCost: number; reachable: boolean } {
-  const route = calculateAStarPath(beliefGrid, from, BASE_COORD);
+  const baseCoord = options?.baseCoord ?? BASE_COORD;
+  const route = calculateAStarPath(beliefGrid, from, baseCoord, {
+    capabilities: options?.capabilities,
+  });
   if (!route.valid) {
-    const direct = Math.hypot(BASE_COORD.x - from.x, BASE_COORD.z - from.z) * 1.4;
+    const direct = Math.hypot(baseCoord.x - from.x, baseCoord.z - from.z) * 1.4;
     return {
       distanceMeters: direct,
       estimatedBatteryCost: Number((direct * 0.6).toFixed(2)),
